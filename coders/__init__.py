@@ -1,5 +1,5 @@
 from typing import Iterator, Union, Tuple, List
-from abc import ABCMeta, abstractclassmethod
+from abc import ABCMeta, abstractmethod
 import numpy as np
 import scipy
 import scipy.signal
@@ -247,12 +247,47 @@ class Parameter(object):
 
 class Encoder(object, metaclass=ABCMeta):
 
-    @abstractclassmethod
-    def encode(cls, stream):
+    symbol_size = Parameter(2)
+    symbol_duration = Parameter(0.2)
+    frequency = Parameter(75)
+    rate = Parameter(5000)
+
+    filter_window_base = Parameter(20)
+    filter_window_scale = Parameter(0.1)
+    filter_shape = Parameter(0.5)
+    filter_std_base = Parameter(10)
+    filter_std_scale = Parameter(0.05)
+
+    peak_width_start = Parameter(0.2)
+    peak_width_span = Parameter(0.0)
+    peak_threshold = Parameter(5.0e-3)
+
+    def filter(self, stream):
+        wavelength = self.rate.current / self.frequency.current
+        f_window = self.filter_window_base.current + \
+                   int(round(wavelength * self.filter_window_scale.current))
+        f_shape = self.filter_shape.current  # type: float
+        f_std = self.filter_std_base.current + \
+                int(round(wavelength * self.filter_std_scale.current))
+        print('Filter vars:', f_window, f_shape, f_std)
+        return stream.filter(f_window, f_shape, f_std)
+
+    def peak_vars(self):
+        wavelength = self.rate.current / self.frequency.current
+        pw_start = int(round(wavelength * self.peak_width_start.current))
+        pw_span = max(1, int(round(wavelength * self.peak_width_span.current)))
+        pw_range = np.arange(pw_start, pw_start + pw_span)
+        peak_thresh = self.peak_threshold.current
+        print('Peak vars:', pw_range, peak_thresh)
+        return pw_range, peak_thresh
+
+
+    @abstractmethod
+    def encode(self, stream):
         pass
 
-    @abstractclassmethod
-    def decode(cls, rate, stream):
+    @abstractmethod
+    def decode(self, rate, stream):
         pass
 
 
@@ -261,29 +296,14 @@ class SimpleASK(Encoder):
 
     low_amplitude = Parameter(0.2)
     high_amplitude = Parameter(1)
-    symbol_size = Parameter(2)
-    symbol_duration = Parameter(0.2)
-    frequency = Parameter(100)
-    rate = Parameter(44100)
 
-    peak_width_start = Parameter(0.2)
-    peak_width_span = Parameter(0.0)
-    peak_threshold = Parameter(5.0e-3)
-
-    filter_window_base = Parameter(40)
-    filter_window_scale = Parameter(0.1)
-    filter_shape = Parameter(0.5)
-    filter_std_base = Parameter(20)
-    filter_std_scale = Parameter(0.05)
-
-    @classmethod
-    def encode(cls, stream: BitStream):
-        f = cls.frequency.current
-        r = cls.rate.current
-        low_amp = cls.low_amplitude.current
-        high_amp = cls.high_amplitude.current
-        symbol_size = cls.symbol_size.current
-        symbol_len = int(round(r * cls.symbol_duration.current))
+    def encode(self, stream: BitStream):
+        f = self.frequency.current
+        r = self.rate.current
+        low_amp = self.low_amplitude.current
+        high_amp = self.high_amplitude.current
+        symbol_size = self.symbol_size.current
+        symbol_len = int(round(r * self.symbol_duration.current))
 
         stream = stream.assymbolsize(symbol_size)
         stream_len = len(stream) * symbol_len
@@ -298,41 +318,28 @@ class SimpleASK(Encoder):
 
         return wave
 
-    @classmethod
-    def decode(cls, rate, stream):
+    def decode(self, rate, stream):
         # Prepare main variables
-        f = cls.frequency.current
+        f = self.frequency.current
         r = rate
-        period = r/f
-        low_amp = cls.low_amplitude.current
-        high_amp = cls.high_amplitude.current
-        symbol_size = cls.symbol_size.current
-        symbol_len = int(round(rate * cls.symbol_duration.current))
+        wavelength = r / f
+        low_amp = self.low_amplitude.current
+        high_amp = self.high_amplitude.current
+        symbol_size = self.symbol_size.current
+        symbol_len = int(round(rate * self.symbol_duration.current))
         levels = np.linspace(low_amp, high_amp, 2**symbol_size)  # type: np.ndarray  # noqa
         stream = WavStream(stream, rate, symbol_len)
-        print('Main vars:', symbol_len, len(stream), round(period), levels.round(2))
+        print('Main vars:', symbol_len, len(stream), round(wavelength),
+              levels.round(2))
 
-        # Filter stream
-        f_window = cls.filter_window_base.current + \
-                   int(round(r * cls.filter_window_scale.current / f))
-        f_shape = cls.filter_shape.current  # type: float
-        f_std = cls.filter_std_base.current + \
-                int(round(r * cls.filter_std_scale.current / f))
-        stream = stream.filter(f_window, f_shape, f_std)
-        print('Filter vars:', f_window, f_shape, f_std)
-
-        # Peak detection
-        pw_start = int(round(r * cls.peak_width_start.current / f))
-        pw_span = max(1, int(round(r * cls.peak_width_span.current / f)))
-        pw_range = np.arange(pw_start, pw_start + pw_span)
-        peak_thresh = cls.peak_threshold.current
-        print('Peak vars:', pw_start, pw_span, pw_range)
+        # Filter and peak prep
+        stream = self.filter(stream)
+        pw_range, peak_thresh = self.peak_vars()
 
         # Create solution
         retval = []
         for symbol in stream.symbols():
-            peaks = np.array(list(map(lambda v: v[1],
-                                      symbol.peaks(pw_range, peak_thresh))))
+            peaks = np.array(symbol.peaks(pw_range, peak_thresh))[:,1]
             peak = np.abs(peaks).mean()
             print('peak', peak.round(2))
             retval.append(np.abs(levels - peak).argmin())
@@ -342,30 +349,14 @@ class SimpleASK(Encoder):
 # TODO: omit first/last peak
 class SimplePSK(Encoder):
 
-    symbol_size = Parameter(2)
-    symbol_duration = Parameter(0.2)
-    frequency = Parameter(50)
-    rate = Parameter(5000)
-
-    peak_width_start = Parameter(0.2)
-    peak_width_span = Parameter(0.0)
-    peak_threshold = Parameter(5.0e-3)
-
-    filter_window_base = Parameter(40)
-    filter_window_scale = Parameter(0.1)
-    filter_shape = Parameter(0.5)
-    filter_std_base = Parameter(20)
-    filter_std_scale = Parameter(0.05)
-
     zeroes_width = Parameter(0.2)
     zeroes_threshold = Parameter(0.25)
 
-    @classmethod
-    def encode(cls, stream: BitStream):
-        f = cls.frequency.current
-        r = cls.rate.current
-        symbol_size = cls.symbol_size.current
-        symbol_len = int(round(r * cls.symbol_duration.current))
+    def encode(self, stream: BitStream):
+        f = self.frequency.current
+        r = self.rate.current
+        symbol_size = self.symbol_size.current
+        symbol_len = int(round(r * self.symbol_duration.current))
 
         stream = stream.assymbolsize(symbol_size)
         stream_len = len(stream) * symbol_len
@@ -379,51 +370,41 @@ class SimplePSK(Encoder):
 
         return wave
 
-    @classmethod
-    def decode(cls, rate, stream):
+    def decode(self, rate, stream):
         # Prepare main variables
-        f = cls.frequency.current
+        f = self.frequency.current
         r = rate
-        period = r/f
-        symbol_size = cls.symbol_size.current
-        symbol_len = int(round(rate * cls.symbol_duration.current))
+        wavelength = r / f
+        symbol_size = self.symbol_size.current
+        symbol_len = int(round(rate * self.symbol_duration.current))
         stream_len = len(stream)
         levels = 2**symbol_size
         shifts = np.linspace(0, 1, levels+1)
         stream = WavStream(stream, r, symbol_len)
-        print('Main vars:', symbol_len, len(stream), round(period))
+        print('Main vars:', symbol_len, len(stream), round(wavelength))
 
-        # Filter stream
-        f_window = cls.filter_window_base.current + \
-                   int(round(r * cls.filter_window_scale.current / f))
-        f_shape = cls.filter_shape.current  # type: float
-        f_std = cls.filter_std_base.current + \
-                int(round(r * cls.filter_std_scale.current / f))
-        stream = stream.filter(f_window, f_shape, f_std)
-        print('Filter vars:', f_window, f_shape, f_std)
+        # Filter and peak prep
+        stream = self.filter(stream)
+        pw_range, peak_thresh = self.peak_vars()
 
-        # Peak detection
-        pw_start = int(round(r * cls.peak_width_start.current / f))
-        pw_span = max(1, int(round(r * cls.peak_width_span.current / f)))
-        pw_range = np.arange(pw_start, pw_start + pw_span)
-        peak_thresh = cls.peak_threshold.current
+        # Peaks
         peaks = stream.peaks(pw_range, peak_thresh)
         positives = [i for i, v in peaks if v > 0]
         negatives = [i for i, v in peaks if v < 0]
         positives = val_split(positives, symbol_len, stream_len, size=True)
         negatives = val_split(negatives, symbol_len, stream_len, size=True)
-        negatives_stream = [((n % period / period + 0.25) % 1 * levels)
+        negatives_stream = [((n % wavelength / wavelength + 0.25) % 1 * levels)
                             for n in negatives]
-        positives_stream = [((p % period / period + 0.75) % 1 * levels)
+        positives_stream = [((p % wavelength / wavelength + 0.75) % 1 * levels)
                             for p in positives]
         peaks_stream = [np.concatenate(s)
                         for s in zip(negatives_stream, positives_stream)]
-        print('Peak vars:', pw_start, pw_span, pw_range)
+
 
         # Zeroes detection
         # TODO: zeroes reinforcement
-        zeroes_width = int(round(r * cls.zeroes_width.current / f))
-        zeroes_threshold = cls.zeroes_threshold.current
+        zeroes_width = int(round(r * self.zeroes_width.current / f))
+        zeroes_threshold = self.zeroes_threshold.current
         zeroes = stream.zeroes(zeroes_width, zeroes_threshold)
         zeroes = val_split(zeroes, symbol_len, stream_len, size=True)
         print('Zeroes vars:', zeroes_width)
@@ -433,30 +414,15 @@ class SimplePSK(Encoder):
 
 class SimpleFSK(Encoder):
 
-    symbol_size = Parameter(2)
-    symbol_duration = Parameter(0.2)
-    frequency = Parameter(50)
     frequency_dev = Parameter(20)
-    rate = Parameter(5000)
 
-    peak_width_start = Parameter(0.2)
-    peak_width_span = Parameter(0.0)
-    peak_threshold = Parameter(5.0e-3)
-
-    filter_window_base = Parameter(20)
-    filter_window_scale = Parameter(0.05)
-    filter_shape = Parameter(0.5)
-    filter_std_base = Parameter(10)
-    filter_std_scale = Parameter(0.05)
-
-    @classmethod
-    def encode(cls, stream: BitStream):
-        f = cls.frequency.current
-        f_low = f - cls.frequency_dev.current
-        f_high = f + cls.frequency_dev.current
-        r = cls.rate.current
-        symbol_size = cls.symbol_size.current
-        symbol_len = int(round(r * cls.symbol_duration.current))
+    def encode(self, stream: BitStream):
+        f = self.frequency.current
+        f_low = f - self.frequency_dev.current
+        f_high = f + self.frequency_dev.current
+        r = self.rate.current
+        symbol_size = self.symbol_size.current
+        symbol_len = int(round(r * self.symbol_duration.current))
 
         stream = stream.assymbolsize(symbol_size)
         stream_len = len(stream) * symbol_len
@@ -471,35 +437,22 @@ class SimpleFSK(Encoder):
 
         return wave
 
-    @classmethod
-    def decode(cls, rate, stream):
+    def decode(self, rate, stream):
         # Prepare main variables
-        f = cls.frequency.current
+        f = self.frequency.current
         r = rate
-        period = r/f
-        f_low = f - cls.frequency_dev.current
-        f_high = f + cls.frequency_dev.current
-        symbol_size = cls.symbol_size.current
-        symbol_len = int(round(rate * cls.symbol_duration.current))
+        wavelength = r / f
+        f_low = f - self.frequency_dev.current
+        f_high = f + self.frequency_dev.current
+        symbol_size = self.symbol_size.current
+        symbol_len = int(round(rate * self.symbol_duration.current))
         levels = np.linspace(f_low, f_high, 2**symbol_size)  # type: np.ndarray  # noqa
         stream = WavStream(stream, rate, symbol_len)
-        print('Main vars:', symbol_len, len(stream), round(period), levels.round(2))
+        print('Main vars:', symbol_len, len(stream), round(wavelength), levels.round(2))
 
-        # Filter stream
-        f_window = cls.filter_window_base.current + \
-                   int(round(r * cls.filter_window_scale.current / f))
-        f_shape = cls.filter_shape.current  # type: float
-        f_std = cls.filter_std_base.current + \
-                int(round(r * cls.filter_std_scale.current / f))
-        stream = stream.filter(f_window, f_shape, f_std)
-        print('Filter vars:', f_window, f_shape, f_std)
-
-        # Peak detection
-        pw_start = int(round(r * cls.peak_width_start.current / f))
-        pw_span = max(1, int(round(r * cls.peak_width_span.current / f)))
-        pw_range = np.arange(pw_start, pw_start + pw_span)
-        peak_thresh = cls.peak_threshold.current
-        print('Peak vars:', pw_start, pw_span, pw_range)
+        # Filter and peak prep
+        stream = self.filter(stream)
+        pw_range, peak_thresh = self.peak_vars()
 
         # Create solution
         retval = []
