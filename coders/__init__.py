@@ -148,10 +148,13 @@ class WavStream(np.ndarray):
                     peaks.append((m, stream[m]))
         return peaks
 
-    def fft_peaks(self, peak_width=None, threshold=5.0e-2) \
+    def fft_peaks(self, peak_width=None, threshold=5.0e-2, debug=False) \
             -> List[Tuple[int, float, float]]:
         xf, yf = self.fft()
-        return self._peaks(yf, peak_width, threshold, ref=xf)
+        if debug:
+            return xf, yf
+        return self._peaks(yf, peak_width, threshold, relocate_peak=True,
+                           ref=xf)
 
     def peaks(self, peak_width=None, threshold=5.0e-2) \
             -> List[Tuple[int, float]]:
