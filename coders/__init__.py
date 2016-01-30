@@ -373,8 +373,9 @@ class SimplePSK(Encoder):
 
         base = np.linspace(0, f * 2 * np.pi * len(stream) * symbol_len / r,
                            stream_len)
-        shifts = (stream * 2 * np.pi / levels).repeat(symbol_len)
-        wave = np.sin(base - shifts)
+        shifts = (stream * 2 * np.pi / levels)
+        print('Shifts:', shifts.round(2))
+        wave = np.sin(base - shifts.repeat(symbol_len))
 
         return wave
 
