@@ -40,6 +40,10 @@ def val_split(a, partitions, range_max, range_min=0, size=True):
         return list(map(np.array, ret_val))
 
 
+def rint(a):
+    return np.round(a).astype(int)
+
+
 class BitStream(np.ndarray):
 
     def __new__(cls, input_obj, symbolsize=1):
