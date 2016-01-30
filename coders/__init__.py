@@ -429,3 +429,83 @@ class SimplePSK(Encoder):
         print('Zeroes vars:', zeroes_width)
 
         return BitStream([(p.round().astype(int) % levels).mean().astype(int) for p in peaks_stream])
+
+
+class SimpleFSK(Encoder):
+
+    symbol_size = Parameter(2)
+    symbol_duration = Parameter(0.2)
+    frequency = Parameter(50)
+    frequency_dev = Parameter(20)
+    rate = Parameter(5000)
+
+    peak_width_start = Parameter(0.2)
+    peak_width_span = Parameter(0.0)
+    peak_threshold = Parameter(5.0e-3)
+
+    filter_window_base = Parameter(20)
+    filter_window_scale = Parameter(0.05)
+    filter_shape = Parameter(0.5)
+    filter_std_base = Parameter(10)
+    filter_std_scale = Parameter(0.05)
+
+    @classmethod
+    def encode(cls, stream: BitStream):
+        f = cls.frequency.current
+        f_low = f - cls.frequency_dev.current
+        f_high = f + cls.frequency_dev.current
+        r = cls.rate.current
+        symbol_size = cls.symbol_size.current
+        symbol_len = int(round(r * cls.symbol_duration.current))
+
+        stream = stream.assymbolsize(symbol_size)
+        stream_len = len(stream) * symbol_len
+        levels = 2**symbol_size
+        f_step = (f_high - f_low) / (levels - 1)
+
+        base = np.linspace(0, 2 * np.pi * len(stream) * symbol_len / r,
+                           stream_len)
+        f_map = ((stream * f_step) + f_low)
+        print('Frequency map:', f_map.round(2))
+        wave = np.sin(np.multiply(base, f_map.repeat(symbol_len)))
+
+        return wave
+
+    @classmethod
+    def decode(cls, rate, stream):
+        # Prepare main variables
+        f = cls.frequency.current
+        r = rate
+        period = r/f
+        f_low = f - cls.frequency_dev.current
+        f_high = f + cls.frequency_dev.current
+        symbol_size = cls.symbol_size.current
+        symbol_len = int(round(rate * cls.symbol_duration.current))
+        levels = np.linspace(f_low, f_high, 2**symbol_size)  # type: np.ndarray  # noqa
+        stream = WavStream(stream, rate, symbol_len)
+        print('Main vars:', symbol_len, len(stream), round(period), levels.round(2))
+
+        # Filter stream
+        f_window = cls.filter_window_base.current + \
+                   int(round(r * cls.filter_window_scale.current / f))
+        f_shape = cls.filter_shape.current  # type: float
+        f_std = cls.filter_std_base.current + \
+                int(round(r * cls.filter_std_scale.current / f))
+        stream = stream.filter(f_window, f_shape, f_std)
+        print('Filter vars:', f_window, f_shape, f_std)
+
+        # Peak detection
+        pw_start = int(round(r * cls.peak_width_start.current / f))
+        pw_span = max(1, int(round(r * cls.peak_width_span.current / f)))
+        pw_range = np.arange(pw_start, pw_start + pw_span)
+        peak_thresh = cls.peak_threshold.current
+        print('Peak vars:', pw_start, pw_span, pw_range)
+
+        # Create solution
+        retval = []
+        for symbol in stream.symbols():
+            peaks = np.array(symbol.fft_peaks(pw_range, peak_thresh))
+            peak = np.average(peaks[:,2], weights=peaks[:,1])
+            print('peak', peak.round(2))
+            retval.append(np.abs(levels - peak).argmin())
+        return BitStream(retval, symbolsize=symbol_size)
