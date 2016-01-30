@@ -288,11 +288,13 @@ class SimpleASK(Encoder):
         stream = stream.assymbolsize(symbol_size)
         stream_len = len(stream) * symbol_len
         levels = 2**symbol_size
+        step_amp = (high_amp - low_amp) / (levels - 1)
 
         base = np.linspace(0, f * 2 * np.pi * len(stream) * symbol_len / r,
                            stream_len)
-        reshape = ((stream * high_amp / levels) + low_amp).repeat(symbol_len)
-        wave = np.multiply(np.sin(base), reshape)
+        reshape = ((stream * step_amp) + low_amp)
+        print('Reshape:', reshape.round(2))
+        wave = np.multiply(np.sin(base), reshape.repeat(symbol_len))
 
         return wave
 
