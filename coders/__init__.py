@@ -86,21 +86,21 @@ class WavStream(np.ndarray):
 
     DEFAULT_PEAK_WIDTH = np.arange(20, 21)
 
-    def __new__(cls, input_obj, rate, symbol_duration):
+    def __new__(cls, input_obj, rate, symbol_len):
         obj = np.asarray(input_obj, dtype=float).view(cls)
         obj.rate = rate
-        obj.symbol_duration = symbol_duration
+        obj.symbol_len = symbol_len
         return obj
 
     def __array_finalize__(self, obj):
         if obj is None:
             return
         self.rate = getattr(obj, 'rate', None)
-        self.symbol_duration = getattr(obj, 'symbol_duration', None)
+        self.symbol_len = getattr(obj, 'symbol_len', None)
 
     def symbols(self) -> Tuple['WavStream']:
-        return (self[self.symbol_duration*n:self.symbol_duration*(n+1)]
-                for n in range(round(len(self) / self.symbol_duration)))
+        return (self[self.symbol_len * n:self.symbol_len * (n + 1)]
+                for n in range(rint(len(self) / self.symbol_len)))
 
     def fft(self) -> Tuple[np.ndarray, np.ndarray]:
         d = len(self)
@@ -116,7 +116,7 @@ class WavStream(np.ndarray):
         window = scipy.signal.general_gaussian(window_size, p=shape, sig=std)
         stream_f = type(self)(scipy.signal.fftconvolve(window, self),
                               rate=self.rate,
-                              symbol_duration=self.symbol_duration)
+                              symbol_len=self.symbol_len)
         # TODO: Better rebalancing so it can be used for ASK
         stream_f = ((np.abs(self).mean() / np.abs(stream_f).mean()).item() *
                     stream_f)
