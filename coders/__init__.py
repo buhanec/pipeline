@@ -357,7 +357,8 @@ class SimpleASK(Encoder):
         base = np.linspace(0, stream_max, stream_len)
         reshape = (stream * self.step_amp) + self.low_amp
         print('Reshape:', reshape.round(2))
-        return np.sin(base) * reshape.repeat(self.symbol_len)
+        return WavStream(np.sin(base) * reshape.repeat(self.symbol_len),
+                         self.r, self.symbol_len)
 
     def decode(self, stream):
         symbol_len = rint(stream.rate * self.symbol_duration)
@@ -369,6 +370,7 @@ class SimpleASK(Encoder):
         for symbol in stream.symbols():
             peaks = np.array(symbol.peaks(self.peak_range,
                                           self.peak_threshold))
+            # TODO: repeat peaks and do square distance from levels
             peak = np.abs(peaks[:, 1]).mean()
             value = np.square(levels - peak).argmin()
             print('>', value, round(peak, 2))
@@ -396,7 +398,8 @@ class SimplePSK(Encoder):
         base, _ = np.linspace(0, stream_max, stream_len, retstep=True)
         shifts = (stream * 2 * np.pi / self.symbol_size)
         print('Shifts:', shifts.round(2))
-        return np.sin(base - shifts.repeat(self.symbol_len))
+        return WavStream(np.sin(base - shifts.repeat(self.symbol_len)),
+                         self.r, self.symbol_len)
 
     def decode(self, stream):
         λ = stream.rate / self.f
@@ -447,7 +450,8 @@ class SimpleFSK(Encoder):
         base = np.linspace(0, stream_max, stream_len)
         f_map = (stream * self.f_step) + self.f_low
         print('Frequency map:', f_map.round(2))
-        return np.sin(base * f_map.repeat(self.symbol_len))
+        return WavStream(np.sin(base * f_map.repeat(self.symbol_len)),
+                         self.r, self.symbol_len)
 
     def decode(self, stream):
         symbol_len = rint(stream.rate * self.symbol_duration)
@@ -488,8 +492,9 @@ class SimpleQAM(Encoder):
         qam_map = self.polar[stream]
         print('Shifts:', qam_map[:, 1].round(2))
         print('Reshape:', qam_map[:, 0].round(2))
-        return (np.sin(base - qam_map[:, 1].repeat(self.symbol_len)) *
-                qam_map[:, 0].repeat(self.symbol_len))
+        return WavStream(np.sin(base - qam_map[:, 1].repeat(self.symbol_len)) *
+                         qam_map[:, 0].repeat(self.symbol_len), self.r,
+                         self.symbol_len)
 
     def decode(self, stream):
         λ = stream.rate / self.f
