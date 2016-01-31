@@ -331,7 +331,7 @@ class Encoder(object, metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def decode(self, rate, stream):
+    def decode(self, stream):
         pass
 
 
@@ -359,11 +359,11 @@ class SimpleASK(Encoder):
         print('Reshape:', reshape.round(2))
         return np.sin(base) * reshape.repeat(self.symbol_len)
 
-    def decode(self, rate, stream):
-        symbol_len = rint(rate * self.symbol_duration)
+    def decode(self, stream):
+        symbol_len = rint(stream.rate * self.symbol_duration)
         levels, _ = np.linspace(self.low_amp, self.high_amp, self.symbol_size,
                                 retstep=True)
-        stream = self.filter(WavStream(stream, rate, symbol_len))
+        stream = self.filter(WavStream(stream, stream.rate, symbol_len))
 
         retval = []
         for symbol in stream.symbols():
@@ -398,11 +398,11 @@ class SimplePSK(Encoder):
         print('Shifts:', shifts.round(2))
         return np.sin(base - shifts.repeat(self.symbol_len))
 
-    def decode(self, rate, stream):
-        λ = rate / self.f
-        symbol_len = rint(rate * self.symbol_duration)
+    def decode(self, stream):
+        λ = stream.rate / self.f
+        symbol_len = rint(stream.rate * self.symbol_duration)
         stream_len = len(stream)
-        stream = self.filter(WavStream(stream, rate, symbol_len))
+        stream = self.filter(WavStream(stream, stream.rate, symbol_len))
 
         peaks = np.array(stream.peaks(self.peak_range, self.peak_threshold))
         positives = peaks[:, 0][peaks[:, 1] > 0]
@@ -449,11 +449,11 @@ class SimpleFSK(Encoder):
         print('Frequency map:', f_map.round(2))
         return np.sin(base * f_map.repeat(self.symbol_len))
 
-    def decode(self, rate, stream):
-        symbol_len = rint(rate * self.symbol_duration)
+    def decode(self, stream):
+        symbol_len = rint(stream.rate * self.symbol_duration)
         levels, _ = np.linspace(self.f_low, self.f_high, self.symbol_size,
                                 retstep=True)
-        stream = self.filter(WavStream(stream, rate, symbol_len))
+        stream = self.filter(WavStream(stream, stream.rate, symbol_len))
 
         retval = []
         for symbol in stream.symbols():
@@ -491,11 +491,11 @@ class SimpleQAM(Encoder):
         return (np.sin(base - qam_map[:, 1].repeat(self.symbol_len)) *
                 qam_map[:, 0].repeat(self.symbol_len))
 
-    def decode(self, rate, stream):
-        λ = rate / self.f
-        symbol_len = rint(rate * self.symbol_duration)
+    def decode(self, stream):
+        λ = stream.rate / self.f
+        symbol_len = rint(stream.rate * self.symbol_duration)
         stream_len = len(stream)
-        stream = self.filter(WavStream(stream, rate, symbol_len))
+        stream = self.filter(WavStream(stream, stream.rate, symbol_len))
 
         peaks = np.array(stream.peaks(self.peak_range, self.peak_threshold))
         amp = val_split(np.abs(peaks), symbol_len, stream_len, size=True)
