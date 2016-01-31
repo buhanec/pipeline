@@ -50,6 +50,22 @@ def cyclic_d(values, lim):
                 for n in range(lim)], key=lambda n: n[1])[0]
 
 
+def c2p(v):
+    if not isinstance(v, np.ndarray):
+        v = np.array(v)
+    if len(v.shape) == 1:
+        v = np.array([v])
+    return np.array([np.sqrt(np.square(v).sum(axis=1)) / np.sqrt(2), np.arctan2(v[:,1], v[:,0]) % (2*np.pi)]).T
+
+
+def p2c(v):
+    if not isinstance(v, np.ndarray):
+        v = np.array(v)
+    if len(v.shape) == 1:
+        v = np.array([v])
+    return (np.array([np.cos(v[:,1]), np.sin(v[:,1])]) * v[:,0] * np.sqrt(2)).T
+
+
 class BitStream(np.ndarray):
 
     def __new__(cls, input_obj, symbolwidth=1):
