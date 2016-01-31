@@ -25,7 +25,7 @@ def val_split(a, partitions, range_max, range_min=0, size=True):
                 for j in range(splits):
                     split_current = (partitions + 1) * i + j
                     while it_current <= split_current:
-                        ret_val[i].append((it_current, it_value))
+                        ret_val[i].append([it_current, it_value])
                         it_current, it_value = next(it)
                     continue
             return list(map(np.array, ret_val))
@@ -55,7 +55,8 @@ def c2p(v):
         v = np.array(v)
     if len(v.shape) == 1:
         v = np.array([v])
-    return np.array([np.sqrt(np.square(v).sum(axis=1)) / np.sqrt(2), np.arctan2(v[:,1], v[:,0]) % (2*np.pi)]).T
+    return np.array([np.sqrt(np.square(v).sum(axis=1)) / np.sqrt(2),
+                     np.arctan2(v[:, 1], v[:, 0]) % (2*np.pi)]).T
 
 
 def p2c(v):
@@ -63,7 +64,8 @@ def p2c(v):
         v = np.array(v)
     if len(v.shape) == 1:
         v = np.array([v])
-    return (np.array([np.cos(v[:,1]), np.sin(v[:,1])]) * v[:,0] * np.sqrt(2)).T
+    return (np.array([np.cos(v[:, 1]),
+                      np.sin(v[:, 1])]) * v[:, 0] * np.sqrt(2)).T
 
 
 class BitStream(np.ndarray):
@@ -81,7 +83,7 @@ class BitStream(np.ndarray):
     def __repr__(self):
         if self.symbolwidth > 1:
             source = super().__repr__().splitlines()
-            extra = ', symbolwidth={}'.format(self.symbolwidth)
+            extra = ', symbolwidth={}'.format(str(self.symbolwidth))
             if len(source[-1]) + len(extra) < 72:
                 source[-1] = '{}{})'.format(source[-1][:-1], extra)
             else:
@@ -99,7 +101,8 @@ class BitStream(np.ndarray):
         extra = int(np.ceil(len(src) / symbolwidth) * symbolwidth) - len(src)
         padded = np.append(src, [0] * extra)
         iters = [padded[i:] for i in range(symbolwidth)]
-        new = np.array(list(zip(*iters))[::symbolwidth]).astype(int).astype(str)
+        new = np.array(list(zip(*iters))[::symbolwidth]) \
+            .astype(int).astype(str)
         return type(src)([int(''.join(s), 2) for s in new],
                          symbolwidth=symbolwidth)
 
@@ -342,12 +345,14 @@ class SimpleASK(Encoder):
         super().__init__()
         self.low_amp = self.low_amplitude.current
         self.high_amp = self.high_amplitude.current
-        self.step_amp = (self.high_amp - self.low_amp) / (self.symbol_size - 1)
+        self.step_amp = ((self.high_amp - self.low_amp) /
+                         (self.symbol_size - 1))
 
     def encode(self, stream: BitStream):
         stream = stream.assymbolwidth(self.symbol_width)
         stream_len = len(stream) * self.symbol_len
-        stream_max = self.f * 2 * np.pi * len(stream) * self.symbol_len / self.r
+        stream_max = (self.f * 2 * np.pi * len(stream) * self.symbol_len /
+                      self.r)
 
         base = np.linspace(0, stream_max, stream_len)
         reshape = (stream * self.step_amp) + self.low_amp
@@ -356,12 +361,14 @@ class SimpleASK(Encoder):
 
     def decode(self, rate, stream):
         symbol_len = rint(rate * self.symbol_duration)
-        levels = np.linspace(self.low_amp, self.high_amp, self.symbol_size)
+        levels, _ = np.linspace(self.low_amp, self.high_amp, self.symbol_size,
+                                retstep=True)
         stream = self.filter(WavStream(stream, rate, symbol_len))
 
         retval = []
         for symbol in stream.symbols():
-            peaks = np.array(symbol.peaks(self.peak_range, self.peak_threshold))
+            peaks = np.array(symbol.peaks(self.peak_range,
+                                          self.peak_threshold))
             peak = np.abs(peaks[:, 1]).mean()
             value = np.square(levels - peak).argmin()
             print('>', value, round(peak, 2))
@@ -383,9 +390,10 @@ class SimplePSK(Encoder):
     def encode(self, stream: BitStream):
         stream = stream.assymbolwidth(self.symbol_width)
         stream_len = len(stream) * self.symbol_len
-        stream_max = self.f * 2 * np.pi * len(stream) * self.symbol_len / self.r
+        stream_max = (self.f * 2 * np.pi * len(stream) * self.symbol_len /
+                      self.r)
 
-        base = np.linspace(0, stream_max, stream_len)
+        base, _ = np.linspace(0, stream_max, stream_len, retstep=True)
         shifts = (stream * 2 * np.pi / self.symbol_size)
         print('Shifts:', shifts.round(2))
         return np.sin(base - shifts.repeat(self.symbol_len))
@@ -397,23 +405,28 @@ class SimplePSK(Encoder):
         stream = self.filter(WavStream(stream, rate, symbol_len))
 
         peaks = np.array(stream.peaks(self.peak_range, self.peak_threshold))
-        positives = peaks[:,0][peaks[:,1] > 0]
-        negatives = peaks[:,0][peaks[:,1] < 0]
+        positives = peaks[:, 0][peaks[:, 1] > 0]
+        negatives = peaks[:, 0][peaks[:, 1] < 0]
         positives2 = val_split(positives, symbol_len, stream_len, size=True)
         negatives2 = val_split(negatives, symbol_len, stream_len, size=True)
         negatives_stream = (np.array(negatives2) % λ / λ + 0.25)
         positives_stream = (np.array(positives2) % λ / λ + 0.75)
-        peaks_stream = np.array([np.concatenate(s) for s in zip(negatives_stream, positives_stream)]) % 1 * self.symbol_size
-        peaks_stream2 = np.array([np.concatenate(s) for s in zip(negatives_stream, positives_stream)]) % 1 * 2 * np.pi
+        peaks_stream = (np.array([np.concatenate(s) for s in
+                                  zip(negatives_stream, positives_stream)]) %
+                        1 * self.symbol_size)
+        peaks_stream2 = (np.array([np.concatenate(s) for s in
+                                   zip(negatives_stream, positives_stream)]) %
+                         1 * 2 * np.pi)
         for p in peaks_stream2:
             print('>', p.mean().round(2))
 
-        # Zeroes detection
         # TODO: zeroes reinforcement
-        zeroes = stream.zeroes(self.zeroes_width, self.zeroes_threshold)
-        zeroes = val_split(zeroes, symbol_len, stream_len, size=True)
+        # zeroes = stream.zeroes(self.zeroes_width, self.zeroes_threshold)
+        # zeroes = val_split(zeroes, symbol_len, stream_len, size=True)
 
-        return BitStream(list(map(lambda v: cyclic_d(v, self.symbol_size), peaks_stream)), symbolwidth=self.symbol_width)
+        return BitStream(list(map(lambda v: cyclic_d(v, self.symbol_size),
+                                  peaks_stream)),
+                         symbolwidth=self.symbol_width)
 
 
 class SimpleFSK(Encoder):
@@ -437,15 +450,16 @@ class SimpleFSK(Encoder):
         return np.sin(base * f_map.repeat(self.symbol_len))
 
     def decode(self, rate, stream):
-        λ = rate / self.f
         symbol_len = rint(rate * self.symbol_duration)
-        levels = np.linspace(self.f_low, self.f_high, self.symbol_size)
+        levels, _ = np.linspace(self.f_low, self.f_high, self.symbol_size,
+                                retstep=True)
         stream = self.filter(WavStream(stream, rate, symbol_len))
 
         retval = []
         for symbol in stream.symbols():
-            peaks = np.array(symbol.fft_peaks(self.peak_range, self.peak_threshold))
-            peak = np.average(peaks[:,2], weights=peaks[:,1])
+            peaks = np.array(symbol.fft_peaks(self.peak_range,
+                                              self.peak_threshold))
+            peak = np.average(peaks[:, 2], weights=peaks[:, 1])
             value = np.square(levels - peak).argmin()
             print('>', value, peak.round(2))
             retval.append(value)
@@ -459,19 +473,23 @@ class SimpleQAM(Encoder):
     def __init__(self):
         super().__init__()
         self.symbol_width = self.symbol_width  # type: int
-        self.cartesian = np.array([[x, y] for x in np.linspace(-1, 1, 4) for y in np.linspace(-1, 1, 4)])
+        # TODO: generate constellation based on symbol width
+        self.cartesian = np.array([[x, y] for x in np.linspace(-1, 1, 4)
+                                   for y in np.linspace(-1, 1, 4)])
         self.polar = c2p(self.cartesian)
 
     def encode(self, stream):
         stream = stream.assymbolwidth(self.symbol_width)
         stream_len = len(stream) * self.symbol_len
-        stream_max = self.f * 2 * np.pi * len(stream) * self.symbol_len / self.r
+        stream_max = (self.f * 2 * np.pi * len(stream) * self.symbol_len /
+                      self.r)
 
-        base = np.linspace(0, stream_max, stream_len)
+        base, _ = np.linspace(0, stream_max, stream_len, retstep=True)
         qam_map = self.polar[stream]
-        print('Shifts:', qam_map[:,1].round(2))
-        print('Reshape:', qam_map[:,0].round(2))
-        return np.sin(base - qam_map[:,1].repeat(self.symbol_len)) * qam_map[:,0].repeat(self.symbol_len)
+        print('Shifts:', qam_map[:, 1].round(2))
+        print('Reshape:', qam_map[:, 0].round(2))
+        return (np.sin(base - qam_map[:, 1].repeat(self.symbol_len)) *
+                qam_map[:, 0].repeat(self.symbol_len))
 
     def decode(self, rate, stream):
         λ = rate / self.f
@@ -481,14 +499,16 @@ class SimpleQAM(Encoder):
 
         peaks = np.array(stream.peaks(self.peak_range, self.peak_threshold))
         amp = val_split(np.abs(peaks), symbol_len, stream_len, size=True)
-        amp2 = [v[:,1].mean() for v in amp]
-        positives = peaks[:,0][peaks[:,1] > 0]
-        negatives = peaks[:,0][peaks[:,1] < 0]
+        amp2 = [v[:, 1].mean() for v in amp]
+        positives = peaks[:, 0][peaks[:, 1] > 0]
+        negatives = peaks[:, 0][peaks[:, 1] < 0]
         positives2 = val_split(positives, symbol_len, stream_len, size=True)
         negatives2 = val_split(negatives, symbol_len, stream_len, size=True)
         negatives_stream = (np.array(negatives2) % λ / λ + 0.25)
         positives_stream = (np.array(positives2) % λ / λ + 0.75)
-        peaks_stream = np.array([np.concatenate(s) for s in zip(negatives_stream, positives_stream)]) % 1 * 2 * np.pi
+        peaks_stream = (np.array([np.concatenate(s) for s in
+                                 zip(negatives_stream, positives_stream)]) %
+                        1 * 2 * np.pi)
         bad_mean = np.array([v.mean() for v in peaks_stream])
 
         polar = np.array(list(zip(amp2, bad_mean)))
@@ -497,7 +517,7 @@ class SimpleQAM(Encoder):
         retval = []
         for c in cartesian:
             temp = np.square(self.cartesian - c)
-            temp2 = temp[:,0] + temp[:,1]
+            temp2 = temp[:, 0] + temp[:, 1]
             value = temp2.argmin()
             print('>', value, c.round(2))
             retval.append(value)
