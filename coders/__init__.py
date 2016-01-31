@@ -404,6 +404,9 @@ class SimplePSK(Encoder):
         negatives_stream = (np.array(negatives2) % λ / λ + 0.25)
         positives_stream = (np.array(positives2) % λ / λ + 0.75)
         peaks_stream = np.array([np.concatenate(s) for s in zip(negatives_stream, positives_stream)]) % 1 * self.symbol_size
+        peaks_stream2 = np.array([np.concatenate(s) for s in zip(negatives_stream, positives_stream)]) % 1 * 2 * np.pi
+        for p in peaks_stream2:
+            print('>', p.mean().round(2))
 
         # Zeroes detection
         # TODO: zeroes reinforcement
@@ -411,6 +414,7 @@ class SimplePSK(Encoder):
         zeroes = val_split(zeroes, symbol_len, stream_len, size=True)
 
         return BitStream(list(map(lambda v: cyclic_d(v, self.symbol_size), peaks_stream)), symbolwidth=self.symbol_width)
+
 
 class SimpleFSK(Encoder):
 
