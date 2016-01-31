@@ -19,7 +19,7 @@ def val_split(a, partitions, range_max, range_min=0, size=True):
     ret_val = [[] for _ in range(n)]
 
     try:
-        if isinstance(it_current, tuple):
+        if isinstance(it_current, (tuple, list, np.ndarray)):
             it_current, it_value = it_current
             for i in range(n):
                 for j in range(splits):
