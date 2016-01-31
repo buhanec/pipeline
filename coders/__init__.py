@@ -450,3 +450,55 @@ class SimpleFSK(Encoder):
             print('>', value, peak.round(2))
             retval.append(value)
         return BitStream(retval, symbolwidth=self.symbol_size)
+
+
+class SimpleQAM(Encoder):
+
+    symbol_width = Parameter(4)
+
+    def __init__(self):
+        super().__init__()
+        self.symbol_width = self.symbol_width  # type: int
+        self.cartesian = np.array([[x, y] for x in np.linspace(-1, 1, 4) for y in np.linspace(-1, 1, 4)])
+        self.polar = c2p(self.cartesian)
+
+    def encode(self, stream):
+        stream = stream.assymbolwidth(self.symbol_width)
+        stream_len = len(stream) * self.symbol_len
+        stream_max = self.f * 2 * np.pi * len(stream) * self.symbol_len / self.r
+
+        base = np.linspace(0, stream_max, stream_len)
+        qam_map = self.polar[stream]
+        print('Shifts:', qam_map[:,1].round(2))
+        print('Reshape:', qam_map[:,0].round(2))
+        return np.sin(base - qam_map[:,1].repeat(self.symbol_len)) * qam_map[:,0].repeat(self.symbol_len)
+
+    def decode(self, rate, stream):
+        λ = rate / self.f
+        symbol_len = rint(rate * self.symbol_duration)
+        stream_len = len(stream)
+        stream = self.filter(WavStream(stream, rate, symbol_len))
+
+        peaks = np.array(stream.peaks(self.peak_range, self.peak_threshold))
+        amp = val_split(np.abs(peaks), symbol_len, stream_len, size=True)
+        amp2 = [v[:,1].mean() for v in amp]
+        positives = peaks[:,0][peaks[:,1] > 0]
+        negatives = peaks[:,0][peaks[:,1] < 0]
+        positives2 = val_split(positives, symbol_len, stream_len, size=True)
+        negatives2 = val_split(negatives, symbol_len, stream_len, size=True)
+        negatives_stream = (np.array(negatives2) % λ / λ + 0.25)
+        positives_stream = (np.array(positives2) % λ / λ + 0.75)
+        peaks_stream = np.array([np.concatenate(s) for s in zip(negatives_stream, positives_stream)]) % 1 * 2 * np.pi
+        bad_mean = np.array([v.mean() for v in peaks_stream])
+
+        polar = np.array(list(zip(amp2, bad_mean)))
+        cartesian = p2c(polar)
+
+        retval = []
+        for c in cartesian:
+            temp = np.square(self.cartesian - c)
+            temp2 = temp[:,0] + temp[:,1]
+            value = temp2.argmin()
+            print('>', value, c.round(2))
+            retval.append(value)
+        return BitStream(retval, symbolwidth=self.symbol_width)
