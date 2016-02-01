@@ -309,8 +309,8 @@ class Encoder(object, metaclass=ABCMeta):
 
     symbol_width = Parameter(2)
     symbol_duration = Parameter(0.2)
-    frequency = Parameter(75)
-    rate = Parameter(5000)
+    frequency = Parameter(200)
+    rate = Parameter(8000)
 
     filter_window_base = Parameter(20)
     filter_window_scale = Parameter(0.1)
