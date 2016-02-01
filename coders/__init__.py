@@ -47,7 +47,8 @@ def rint(a):
 
 def cyclic_d(values, lim):
     values = values % lim
-    lim_case = np.array([np.minimum(np.square(values - lim), np.square(values))])
+    lim_case = np.array([np.minimum(np.square(values - lim),
+                                    np.square(values))])
     m = np.array([np.minimum(np.square(n - values),
                              np.square(n + values))
                   for n in np.arange(1, 4)])
@@ -86,6 +87,7 @@ def sync_padding(coder, duration=0.4):
     return WavStream(base * transform, coder.r, total)
 
 
+# TODO: replace with window = scipy.signal.gaussian(51, std=7)
 def ease(x: Union[Number, np.ndarray], a=2):
     return x**a / (x**a + (1 - x)**a)
 
