@@ -284,6 +284,7 @@ class Parameter(object):
             self._type = int
         else:
             self._type = float
+        self._default = self._current
 
     def __iter__(self) -> Iterator[int]:
         for value in self._range:
@@ -305,6 +306,12 @@ class Parameter(object):
         if self._type == int:
             return int(self._stop)
         return self._stop
+
+    @property
+    def default(self) -> Union[int, float]:
+        if self._type == int:
+            return int(self._default)
+        return self._default
 
     @property
     def current(self) -> Union[int, float]:
@@ -338,11 +345,11 @@ class Encoder(object, metaclass=ABCMeta):
 
     def __init__(self):
         # Main vars
-        self.symbol_width = self.symbol_width.current
+        self.symbol_width = self.symbol_width.default
         self.symbol_size = 2**self.symbol_width
-        self.symbol_duration = self.symbol_duration.current
-        self.f = self.frequency.current
-        self.r = self.rate.current
+        self.symbol_duration = self.symbol_duration.default
+        self.f = self.frequency.default
+        self.r = self.rate.default
         print('Main vars:', self.f, self.r, self.symbol_width,
               self.symbol_duration)
 
@@ -352,20 +359,27 @@ class Encoder(object, metaclass=ABCMeta):
         print('Secondary vars:', round(self.λ), self.symbol_len)
 
         # Filter vars
-        self.filter_window = rint(self.filter_window_base.current +
-                                  self.filter_window_scale.current * self.λ)
-        self.filter_shape = self.filter_shape.current
-        self.filter_std = rint(self.filter_std_base.current +
-                               self.filter_std_scale.current * self.λ)
+        self.filter_window = rint(self.filter_window_base.default +
+                                  self.filter_window_scale.default * self.λ)
+        self.filter_shape = self.filter_shape.default
+        self.filter_std = rint(self.filter_std_base.default +
+                               self.filter_std_scale.default * self.λ)
         print('Filter vars:', self.filter_window, self.filter_shape,
               self.filter_std)
 
         # Peak vars
-        p_start = rint(self.peak_width_start.current * self.λ)
-        p_span = max(1, rint(self.peak_width_span.current * self.λ))
+        p_start = rint(self.peak_width_start.default * self.λ)
+        p_span = max(1, rint(self.peak_width_span.default * self.λ))
         self.peak_range = np.arange(p_start, p_start + p_span)
-        self.peak_threshold = self.peak_threshold.current
+        self.peak_threshold = self.peak_threshold.default
         print('Peak vars:', self.peak_range, self.peak_threshold)
+
+    def _post_init(self):
+        cls = type(self)
+        parameters = {p: getattr(self, p) for p in dir(cls)
+                      if isinstance(getattr(cls, p), Parameter)}
+        self.parameters = {p: v.current if isinstance(v, Parameter) else v
+                           for p, v in parameters.items()}
 
     def filter(self, stream):
         return stream.filter(self.filter_window, self.filter_shape,
@@ -389,10 +403,11 @@ class SimpleASK(Encoder):
 
     def __init__(self):
         super().__init__()
-        self.low_amp = self.low_amplitude.current
-        self.high_amp = self.high_amplitude.current
+        self.low_amp = self.low_amplitude.default
+        self.high_amp = self.high_amplitude.default
         self.step_amp = ((self.high_amp - self.low_amp) /
                          (self.symbol_size - 1))
+        super()._post_init()
 
     def encode(self, stream: BitStream):
         stream = stream.assymbolwidth(self.symbol_width)
@@ -432,8 +447,9 @@ class SimplePSK(Encoder):
 
     def __init__(self):
         super().__init__()
-        self.zeroes_width = rint(self.zeroes_width.current * self.λ)
-        self.zeroes_threshold = self.zeroes_threshold.current
+        self.zeroes_width = rint(self.zeroes_width.default * self.λ)
+        self.zeroes_threshold = self.zeroes_threshold.default
+        super()._post_init()
 
     def encode(self, stream: BitStream):
         stream = stream.assymbolwidth(self.symbol_width)
@@ -504,9 +520,10 @@ class SimpleFSK(Encoder):
 
     def __init__(self):
         super().__init__()
-        self.f_low = self.f - self.frequency_dev.current
-        self.f_high = self.f + self.frequency_dev.current
+        self.f_low = self.f - self.frequency_dev.default
+        self.f_high = self.f + self.frequency_dev.default
         self.f_step = (self.f_high - self.f_low) / (self.symbol_size - 1)
+        super()._post_init()
 
     def encode(self, stream: BitStream):
         stream = stream.assymbolwidth(self.symbol_width)
@@ -547,6 +564,7 @@ class SimpleQAM(Encoder):
         self.cartesian = np.array([[x, y] for x in np.linspace(-1, 1, 4)
                                    for y in np.linspace(-1, 1, 4)])
         self.polar = c2p(self.cartesian)
+        super()._post_init()
 
     def encode(self, stream):
         stream = stream.assymbolwidth(self.symbol_width)
