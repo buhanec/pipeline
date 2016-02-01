@@ -328,11 +328,11 @@ class Encoder(object, metaclass=ABCMeta):
 
     def __init__(self):
         # Main vars
-        self.symbol_width = self.symbol_width.default
+        self.symbol_width = self.symbol_width.current
         self.symbol_size = 2**self.symbol_width
-        self.symbol_duration = self.symbol_duration.default
-        self.f = self.frequency.default
-        self.r = self.rate.default
+        self.symbol_duration = self.symbol_duration.current
+        self.f = self.frequency.current
+        self.r = self.rate.current
         print('Main vars:', self.f, self.r, self.symbol_width,
               self.symbol_duration)
 
@@ -342,21 +342,21 @@ class Encoder(object, metaclass=ABCMeta):
         print('Secondary vars:', round(self.λ), self.symbol_len)
 
         # Filter vars
-        self.filter_window = rint(self.filter_window_base.default +
-                                  self.filter_window_scale.default * self.λ)
-        self.filter_shape = self.filter_shape.default
-        self.filter_std = rint(self.filter_std_base.default +
-                               self.filter_std_scale.default * self.λ)
+        self.filter_window = rint(self.filter_window_base.current +
+                                  self.filter_window_scale.current * self.λ)
+        self.filter_shape = self.filter_shape.current
+        self.filter_std = rint(self.filter_std_base.current +
+                               self.filter_std_scale.current * self.λ)
         print('Filter vars:', self.filter_window, self.filter_shape,
               self.filter_std)
 
         # Peak vars
-        p_start = max(1, rint(self.peak_width_start.default * self.λ))
-        p_span = max(1, rint(self.peak_width_span.default * self.λ))
+        p_start = max(1, rint(self.peak_width_start.current * self.λ))
+        p_span = max(1, rint(self.peak_width_span.current * self.λ))
         p_range = np.arange(p_start, p_start + p_span)
         p_num = max(1, len(p_range) // 5)
         self.peak_range = p_range[::p_num]
-        self.peak_threshold = self.peak_threshold.default
+        self.peak_threshold = self.peak_threshold.current
         print('Peak vars:', self.peak_range, self.peak_threshold)
 
     def _post_init(self):
@@ -388,8 +388,8 @@ class SimpleASK(Encoder):
 
     def __init__(self):
         super().__init__()
-        self.high_amp = self.high_amplitude.default
-        self.low_amp = self.low_amplitude.default * self.high_amp
+        self.high_amp = self.high_amplitude.current
+        self.low_amp = self.low_amplitude.current * self.high_amp
         self.step_amp = ((self.high_amp - self.low_amp) /
                          (self.symbol_size - 1))
         super()._post_init()
@@ -432,8 +432,8 @@ class SimplePSK(Encoder):
 
     def __init__(self):
         super().__init__()
-        self.zeroes_width = rint(self.zeroes_width.default * self.λ)
-        self.zeroes_threshold = self.zeroes_threshold.default
+        self.zeroes_width = rint(self.zeroes_width.current * self.λ)
+        self.zeroes_threshold = self.zeroes_threshold.current
         super()._post_init()
 
     def encode(self, stream: BitStream):
@@ -505,8 +505,8 @@ class SimpleFSK(Encoder):
 
     def __init__(self):
         super().__init__()
-        self.f_low = self.f * (1 - self.frequency_dev.default)
-        self.f_high = self.f * (1 + self.frequency_dev.default)
+        self.f_low = self.f * (1 - self.frequency_dev.current)
+        self.f_high = self.f * (1 + self.frequency_dev.current)
         self.f_step = (self.f_high - self.f_low) / (self.symbol_size - 1)
         super()._post_init()
 
