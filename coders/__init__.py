@@ -1,4 +1,5 @@
 from typing import Iterator, Union, Tuple, List
+from numbers import Number
 from abc import ABCMeta, abstractmethod
 import numpy as np
 import scipy
@@ -69,6 +70,33 @@ def p2c(v):
         v = np.array([v])
     return (np.array([np.cos(v[:, 1]),
                       np.sin(v[:, 1])]) * v[:, 0] * np.sqrt(2)).T
+
+
+def sync_padding(coder, duration=0.4):
+    transition = rint(duration * 0.15 * coder.r)
+    total = rint(duration * coder.r)
+
+    base = np.sin(np.linspace(0, coder.f * 2 * np.pi * duration, total))
+    transform = np.concatenate((np.zeros(transition),
+                                ease(np.linspace(0, 1, transition)),
+                                np.ones(total - 4 * transition),
+                                ease(np.linspace(1, 0, transition)),
+                                np.zeros(transition)))
+
+    return WavStream(base * transform, coder.r, total)
+
+
+def ease(x: Union[Number, np.ndarray], a=2):
+    return x**a / (x**a + (1 - x)**a)
+
+
+def min_error(a, b, shift, l=None, w=0):
+    if l is None:
+        l = len(a)
+    shifts = np.arange(-shift, shift)
+    errors = np.array([np.square(a[w:l-w] - b[w+n:l-w+n]).sum().item()
+                       for n in shifts])
+    return shifts[errors.argmin()]
 
 
 class BitStream(np.ndarray):
