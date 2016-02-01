@@ -5,6 +5,8 @@
 *.png
 *.pdf
 *.svg
+old_notebooks/*
+temp/*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
