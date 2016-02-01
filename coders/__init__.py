@@ -550,7 +550,7 @@ class SimpleFSK(Encoder):
             value = np.square(levels - peak).argmin()
             print('>', value, peak.round(2))
             retval.append(value)
-        return BitStream(retval, symbolwidth=self.symbol_size)
+        return BitStream(retval, symbolwidth=self.symbol_width)
 
 
 class SimpleQAM(Encoder):
