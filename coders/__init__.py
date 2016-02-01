@@ -139,6 +139,18 @@ class BitStream(np.ndarray):
         return type(src)([int(''.join(s), 2) for s in new],
                          symbolwidth=symbolwidth)
 
+    def __eq__(self, other):
+        self_ = self
+        other_ = other
+        if isinstance(other_, BitStream):
+            other_ = other_.assymbolwidth(1)
+            if self_.symbolwidth != 1:
+                self_ = self_.assymbolwidth(1)
+            clip = len(self_) - len(other_)
+            if 0 < clip < self.symbolwidth and all(self_[-clip:] == 0):
+                self_ = self_[:len(other_)]
+        return super(BitStream, self_).__eq__(other_)
+
 
 class WavStream(np.ndarray):
 
