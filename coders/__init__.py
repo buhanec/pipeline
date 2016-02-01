@@ -339,6 +339,7 @@ class Encoder(object, metaclass=ABCMeta):
 
 
 # TODO: omit first/last peak
+# TODO: separate levels for decoding
 class SimpleASK(Encoder):
 
     low_amplitude = Parameter(0.2)
@@ -405,6 +406,26 @@ class SimplePSK(Encoder):
                          self.r, self.symbol_len)
 
     def decode(self, stream):
+        λ = stream.rate / self.f
+        symbol_len = rint(stream.rate * self.symbol_duration)
+        stream = self.filter(WavStream(stream, stream.rate, symbol_len))
+
+        retval = []
+        for s in stream.symbols():
+            peaks = np.array(s.peaks(self.peak_range, self.peak_threshold))
+            positives = peaks[:, 0][peaks[:, 1] > 0]
+            negatives = peaks[:, 0][peaks[:, 1] < 0]
+            negatives2 = np.array(negatives) % λ / λ + 0.25
+            positives2 = np.array(positives) % λ / λ + 0.75
+            peaks_stream = (np.concatenate((negatives2, positives2)) % 1 *
+                            self.symbol_size)
+            value = cyclic_d(peaks_stream, self.symbol_size)
+            retval.append(value)
+            print('>', value, peaks_stream.mean().round(2))
+        return BitStream(retval, symbolwidth=self.symbol_width)
+
+    # TODO: reevaluate with better peaks implementation
+    def decode_(self, stream):
         λ = stream.rate / self.f
         symbol_len = rint(stream.rate * self.symbol_duration)
         stream_len = len(stream)
@@ -500,6 +521,33 @@ class SimpleQAM(Encoder):
                          self.symbol_len)
 
     def decode(self, stream):
+        λ = stream.rate / self.f
+        symbol_len = rint(stream.rate * self.symbol_duration)
+        stream = self.filter(WavStream(stream, stream.rate, symbol_len))
+
+        retval = []
+        for s in stream.symbols():
+            peaks = np.array(s.peaks(self.peak_range, self.peak_threshold))
+            # TODO: squared distance from levels
+            amp = np.abs(peaks)[:, 1].mean()
+            positives = peaks[:, 0][peaks[:, 1] > 0]
+            negatives = peaks[:, 0][peaks[:, 1] < 0]
+            negatives2 = np.array(negatives) % λ / λ + 0.25
+            positives2 = np.array(positives) % λ / λ + 0.75
+            peaks_stream = np.concatenate((negatives2, positives2))
+            bad_mean = (peaks_stream % 1 * 2 * np.pi).mean()
+
+            polar = np.array([[amp, bad_mean]])
+            cartesian = p2c(polar)
+
+            temp = np.square(self.cartesian - cartesian)
+            temp2 = temp[:, 0] + temp[:, 1]
+            value = temp2.argmin()
+            retval.append(value)
+            print('>', value, cartesian.round(2), polar.round(2))
+        return BitStream(retval, symbolwidth=self.symbol_width)
+
+    def decode_(self, stream):
         λ = stream.rate / self.f
         symbol_len = rint(stream.rate * self.symbol_duration)
         stream_len = len(stream)
