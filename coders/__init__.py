@@ -45,9 +45,12 @@ def rint(a):
 
 
 def cyclic_d(values, lim):
-    return min([(n, np.minimum(np.square((n - values) % lim),
-                               np.square((values + n) % lim)).mean())
-                for n in range(lim)], key=lambda n: n[1])[0]
+    values = values % lim
+    lim_case = np.array([np.minimum(np.square(values - lim), np.square(values))])
+    m = np.array([np.minimum(np.square(n - values),
+                             np.square(n + values))
+                  for n in np.arange(1, 4)])
+    return np.concatenate((lim_case, m), axis=0).mean(axis=1).argmin()
 
 
 def c2p(v):
