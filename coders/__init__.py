@@ -1,4 +1,4 @@
-from typing import Iterator, Union, Tuple, List
+from typing import Union, Tuple, List
 from numbers import Number
 from abc import ABCMeta, abstractmethod
 import numpy as np
@@ -265,83 +265,66 @@ class WavStream(np.ndarray):
 
 class Parameter(object):
 
-    def __init__(self, start, stop=None, num=None, default=np.nan):
+    def __init__(self, start, stop=None, default=None, jump=None):
         self._start = start
         self._stop = stop or start
-        self._num = num or 1
-        self._range, self._step = np.linspace(self._start, self._stop,
-                                              self._num, retstep=True)
-        if default in self._range:  # wait for == None to return array
-            self._current = default
-        else:
-            self._current = self._range[len(self._range) // 2]
-        if self._num > 1:
-            if float(int(self._step)) == self._step:
-                self._type = int
-            else:
-                self._type = float
-        elif float(int(self._start)) == self._start:
+
+        if (isinstance(self._start, int) and isinstance(self._stop, int) and
+                (isinstance(default, int) or default is None)):
             self._type = int
         else:
             self._type = float
-        self._default = self._current
 
-    def __iter__(self) -> Iterator[int]:
-        for value in self._range:
-            self._current = value
-            yield value
+        if jump is None:
+            self._jump = abs(self._start - self._stop) / 3
+        else:
+            self._jump = jump
+
+        if default is None:
+            self._default = self._type((self._start + self._stop) / 2)
+            # print('none:', self._default)
+        else:
+            self._default = default
+            # print('set:', self._default)
+        self._current = self._default
+
+    def mutate(self) -> 'Parameter':
+        value = self._default
+        return type(self)(self._start, self._stop, value)
+
+    def cross(self, other: 'Parameter') -> 'Parameter':
+        value = self._type((self._current + other._current) / 2)
+        return type(self)(self._start, self._stop, value)
 
     @property
     def type(self) -> type:
         return self._type
 
     @property
-    def start(self) -> Union[int, float]:
-        if self._type == int:
-            return int(self._start)
-        return self._start
-
-    @property
-    def stop(self) -> Union[int, float]:
-        if self._type == int:
-            return int(self._stop)
-        return self._stop
-
-    @property
     def default(self) -> Union[int, float]:
-        if self._type == int:
-            return int(self._default)
-        return self._default
+        return self._type(self._default)
 
     @property
     def current(self) -> Union[int, float]:
-        if self._type == int:
-            return int(self._current)
-        return self._current
-
-    @property
-    def step(self) -> Union[int, float]:
-        if self._type == int:
-            return int(self._step)
-        return self._step
+        return self._type(self._current)
 
 
 class Encoder(object, metaclass=ABCMeta):
 
-    symbol_width = Parameter(2)
-    symbol_duration = Parameter(0.2)
-    frequency = Parameter(200)
-    rate = Parameter(8000)
+    symbol_width = Parameter(1, 3, 2)
+    symbol_duration = Parameter(0.001, 1.0, 0.2)
+    frequency = Parameter(1, 10000, 400)
+    rate = Parameter(8000, 44100, 16000)
 
-    filter_window_base = Parameter(20)
-    filter_window_scale = Parameter(0.1)
-    filter_shape = Parameter(0.5)
-    filter_std_base = Parameter(10)
-    filter_std_scale = Parameter(0.05)
+    filter_window_base = Parameter(1, 500, 20)
+    filter_window_scale = Parameter(0.0, 1.0, 0.1)
+    filter_shape = Parameter(0.5, 1.0, 0.5)
+    filter_std_base = Parameter(1, 250, 10)
+    filter_std_scale = Parameter(0.0, 0.5, 0.05)
 
-    peak_width_start = Parameter(0.2)
-    peak_width_span = Parameter(0.0)
-    peak_threshold = Parameter(5.0e-3)
+    peak_width_start = Parameter(0.0, 1.0, 0.2)
+    peak_width_span = Parameter(0.0, 1.0, 0.0)
+    peak_threshold = Parameter(0.0, 1.0, 5.0e-3)
 
     def __init__(self):
         # Main vars
@@ -368,9 +351,11 @@ class Encoder(object, metaclass=ABCMeta):
               self.filter_std)
 
         # Peak vars
-        p_start = rint(self.peak_width_start.default * self.λ)
+        p_start = max(1, rint(self.peak_width_start.default * self.λ))
         p_span = max(1, rint(self.peak_width_span.default * self.λ))
-        self.peak_range = np.arange(p_start, p_start + p_span)
+        p_range = np.arange(p_start, p_start + p_span)
+        p_num = max(1, len(p_range) // 5)
+        self.peak_range = p_range[::p_num]
         self.peak_threshold = self.peak_threshold.default
         print('Peak vars:', self.peak_range, self.peak_threshold)
 
@@ -398,13 +383,13 @@ class Encoder(object, metaclass=ABCMeta):
 # TODO: separate levels for decoding
 class SimpleASK(Encoder):
 
-    low_amplitude = Parameter(0.2)
-    high_amplitude = Parameter(1)
+    high_amplitude = Parameter(0.0, 1.0, 0.8)
+    low_amplitude = Parameter(0.0, 0.9, 0.25)
 
     def __init__(self):
         super().__init__()
-        self.low_amp = self.low_amplitude.default
         self.high_amp = self.high_amplitude.default
+        self.low_amp = self.low_amplitude.default * self.high_amp
         self.step_amp = ((self.high_amp - self.low_amp) /
                          (self.symbol_size - 1))
         super()._post_init()
@@ -442,8 +427,8 @@ class SimpleASK(Encoder):
 # TODO: omit first/last peak
 class SimplePSK(Encoder):
 
-    zeroes_width = Parameter(0.2)
-    zeroes_threshold = Parameter(0.25)
+    zeroes_width = Parameter(0.05, 1.0, 0.2)
+    zeroes_threshold = Parameter(0.0, 1.0, 0.25)
 
     def __init__(self):
         super().__init__()
@@ -516,12 +501,12 @@ class SimplePSK(Encoder):
 
 class SimpleFSK(Encoder):
 
-    frequency_dev = Parameter(20)
+    frequency_dev = Parameter(0.01, 1.0, 0.25)
 
     def __init__(self):
         super().__init__()
-        self.f_low = self.f - self.frequency_dev.default
-        self.f_high = self.f + self.frequency_dev.default
+        self.f_low = self.f * (1 - self.frequency_dev.default)
+        self.f_high = self.f * (1 + self.frequency_dev.default)
         self.f_step = (self.f_high - self.f_low) / (self.symbol_size - 1)
         super()._post_init()
 
