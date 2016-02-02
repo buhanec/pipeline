@@ -5,6 +5,7 @@ import numpy as np
 import scipy
 import scipy.signal
 import scipy.fftpack
+import scipy.stats
 
 
 def val_split(a, partitions, range_max, range_min=0, size=True):
@@ -265,48 +266,85 @@ class WavStream(np.ndarray):
 
 class Parameter(object):
 
-    def __init__(self, start, stop=None, default=None, jump=None):
-        self._start = start
-        self._stop = stop or start
+    def __init__(self, start, stop=None, default=None, scale=None, log=False,
+                 shift=0, poly=1):
+        self.start = start
+        self.stop = stop or start
 
-        if (isinstance(self._start, int) and isinstance(self._stop, int) and
+        # Type and is log
+        if (isinstance(self.start, int) and isinstance(self.stop, int) and
                 (isinstance(default, int) or default is None)):
-            self._type = int
+            self.type = int
         else:
-            self._type = float
+            self.type = float
+        self.poly = poly
+        self.log = log
+        self.shift = shift
 
-        if jump is None:
-            self._jump = abs(self._start - self._stop) / 3
-        else:
-            self._jump = jump
-
+        # Set default
         if default is None:
-            self._default = self._type((self._start + self._stop) / 2)
-            # print('none:', self._default)
+            self._current = self.type((self.start + self.stop) / 2)
         else:
-            self._default = default
-            # print('set:', self._default)
-        self._current = self._default
+            self._current = default
 
-    def mutate(self) -> 'Parameter':
-        value = self._default
-        return type(self)(self._start, self._stop, value)
+        # Set scale
+        if isinstance(scale, Number):
+            self.scale = scale
+        else:
+            self.scale = abs(self.start - self.stop) / 3
 
-    def cross(self, other: 'Parameter') -> 'Parameter':
-        value = self._type((self._current + other._current) / 2)
-        return type(self)(self._start, self._stop, value)
+    def _mutate(self, scale=1) -> float:
+        c = (self._current + self.shift) ** (1/self.poly)
+        s = (self.scale * scale) ** (1/self.poly)
+        if self.log:
+            v = np.random.lognormal(mean=np.log(c), sigma=np.log(s))
+        else:
+            v = np.random.normal(loc=c, scale=s)
+        return (v - self.shift)**self.poly
 
-    @property
-    def type(self) -> type:
-        return self._type
+    def mutate(self, scale=1) -> 'Parameter':
+        # Get value within bounds
+        v = self._mutate(scale)
+        while not self.start <= v <= self.stop:
+            v = self._mutate(scale)
 
-    @property
-    def default(self) -> Union[int, float]:
-        return self._type(self._default)
+        # Create a new object
+        return type(self)(self.start, self.stop, v, scale=self.scale,
+                          log=self.log)
+
+    def cross(self, other: 'Parameter', strength=1, x=None) -> 'Parameter':
+        c = (self._current + self.shift) ** (1/self.poly)
+        o = (other._current + self.shift) ** (1/self.poly)
+        if self.log:
+            c = np.log(c)
+            o = np.log(o)
+        if c < o:
+            c, o = o, c
+        v = np.random.normal(loc=(o+c)/2, scale=(c-o)/3)
+        while not self.start < v < self.stop:
+            v = np.random.normal(loc=(o+c)/2, scale=(c-o)/3)
+        if self.log:
+            v = np.e**v
+
+        # Create a new object
+        return type(self)(self.start, self.stop, v, scale=self.scale,
+                          log=self.log)
 
     @property
     def current(self) -> Union[int, float]:
-        return self._type(self._current)
+        return self.type(self._current)
+
+    def __repr__(self):
+        base = ('Parameter({}, {}, {}, scale={}'
+                .format(self.start, self.stop, round(self._current, 2),
+                        self.scale, self.log))
+        if self.log:
+            base += ', log=True'
+        if self.shift != 0:
+            base += ', shift={}'.format(self.shift)
+        if self.poly != 1:
+            base += ', poly={}'.format(self.poly)
+        return base + ')'
 
 
 class Encoder(object, metaclass=ABCMeta):
