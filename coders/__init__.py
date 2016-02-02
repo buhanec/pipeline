@@ -117,7 +117,7 @@ class BitStream(np.ndarray):
     def __repr__(self):
         if self.symbolwidth > 1:
             source = super().__repr__().splitlines()
-            extra = ', symbolwidth={}'.format(str(self.symbolwidth))
+            extra = ', symbolwidth={}'.format(self.symbolwidth)
             if len(source[-1]) + len(extra) < 72:
                 source[-1] = '{}{})'.format(source[-1][:-1], extra)
             else:
