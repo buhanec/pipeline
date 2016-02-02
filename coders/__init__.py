@@ -268,12 +268,14 @@ class WavStream(np.ndarray):
 class Parameter(object):
 
     def __init__(self, start, stop=None, default=None, scale=None, log=False,
-                 shift=0, poly=1):
+                 shift=0, poly=1, type_=None):
         self.start = start
         self.stop = stop or start
 
         # Type and is log
-        if (isinstance(self.start, int) and isinstance(self.stop, int) and
+        if type_ is not None:
+            self.type = type_
+        elif (isinstance(self.start, int) and isinstance(self.stop, int) and
                 (isinstance(default, int) or default is None)):
             self.type = int
         else:
@@ -311,7 +313,7 @@ class Parameter(object):
 
         # Create a new object
         return type(self)(self.start, self.stop, v, scale=self.scale,
-                          log=self.log)
+                          log=self.log, type=self.type)
 
     def cross(self, other: 'Parameter', strength=1) -> 'Parameter':
         c = (self._current + self.shift) ** (1/self.poly)
@@ -329,11 +331,16 @@ class Parameter(object):
 
         # Create a new object
         return type(self)(self.start, self.stop, v, scale=self.scale,
-                          log=self.log)
+                          log=self.log, type=self.type)
+
+    def set(self, value):
+        self._current = value
 
     @property
     def current(self) -> Union[int, float]:
-        return self.type(self._current)
+        if self.type == int:
+            return rint(self._current)
+        return self._current
 
     def __repr__(self):
         base = ('Parameter({}, {}, {}, scale={}'
