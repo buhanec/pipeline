@@ -1,4 +1,4 @@
-from typing import Union, Tuple, List
+from typing import Union, Tuple, List, Optional
 from numbers import Number
 from abc import ABCMeta, abstractmethod
 import numpy as np
@@ -301,14 +301,16 @@ class WavStream(np.ndarray):
 
 class Parameter(object):
 
-    def __init__(self, start, stop=None, default=None, scale=None, log=False,
-                 shift=0, poly=1, type_=None):
+    def __init__(self, start: Number, stop: Optional[Number]=None,
+                 default: Optional[Number]=None, scale: Optional[Number]=None,
+                 log: bool=False, shift: Number=0, poly: Number=1,
+                 forced_type: Optional[Number]=None):
         self.start = start
         self.stop = stop or start
 
         # Type and is log
-        if type_ is not None:
-            self.type = type_
+        if forced_type is not None:
+            self.type = forced_type
         elif (isinstance(self.start, int) and isinstance(self.stop, int) and
                 (isinstance(default, int) or default is None)):
             self.type = int
@@ -319,10 +321,7 @@ class Parameter(object):
         self.shift = shift
 
         # Set default
-        if default is None:
-            self._current = self.type((self.start + self.stop) / 2)
-        else:
-            self._current = default
+        self._current = default or (self.start + self.stop) / 2
 
         # Set scale
         if isinstance(scale, Number):
@@ -330,7 +329,7 @@ class Parameter(object):
         else:
             self.scale = abs(self.start - self.stop) / 3
 
-    def _mutate(self, scale=1) -> float:
+    def _mutate(self, scale: Number=1) -> float:
         c = (self._current + self.shift) ** (1/self.poly)
         s = (self.scale * scale) ** (1/self.poly)
         if self.log:
@@ -339,7 +338,7 @@ class Parameter(object):
             v = np.random.normal(loc=c, scale=s)
         return (v - self.shift)**self.poly
 
-    def mutate(self, scale=1) -> 'Parameter':
+    def mutate(self, scale: Number=1) -> 'Parameter':
         # Get value within bounds
         v = self._mutate(scale)
         while not self.start <= v <= self.stop:
@@ -347,9 +346,9 @@ class Parameter(object):
 
         # Create a new object
         return type(self)(self.start, self.stop, v, scale=self.scale,
-                          log=self.log, type=self.type)
+                          log=self.log, forced_type=self.type)
 
-    def cross(self, other: 'Parameter', strength=1) -> 'Parameter':
+    def cross(self, other: 'Parameter', strength: Number=1) -> 'Parameter':
         c = (self._current + self.shift) ** (1/self.poly)
         o = (other._current + self.shift) ** (1/self.poly)
         if self.log:
@@ -365,18 +364,24 @@ class Parameter(object):
 
         # Create a new object
         return type(self)(self.start, self.stop, v, scale=self.scale,
-                          log=self.log, type=self.type)
+                          log=self.log, forced_type=self.type)
 
-    def set(self, value):
+    def set(self, value: Number) -> Number:
         self._current = value
+        return self.current
+
+    def copy(self) -> 'Parameter':
+        return type(self)(self.start, self.stop, self._current,
+                          scale=self.scale, log=self.log,
+                          forced_type=self.type)
 
     @property
-    def current(self) -> Union[int, float]:
+    def current(self) -> Number:
         if self.type == int:
             return rint(self._current)
         return self._current
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         base = ('Parameter({}, {}, {}, scale={}'
                 .format(self.start, self.stop, round(self._current, 2),
                         self.scale, self.log))
@@ -386,7 +391,7 @@ class Parameter(object):
             base += ', shift={}'.format(self.shift)
         if self.poly != 1:
             base += ', poly={}'.format(self.poly)
-        return base + ')'
+        return base + ', forced_type={})'
 
 
 class Encoder(object, metaclass=ABCMeta):
