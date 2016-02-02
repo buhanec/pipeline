@@ -301,10 +301,12 @@ class WavStream(np.ndarray):
 
 class Parameter(object):
 
-    def __init__(self, start: Number, stop: Optional[Number]=None,
-                 default: Optional[Number]=None, scale: Optional[Number]=None,
-                 log: bool=False, shift: Number=0, poly: Number=1,
-                 forced_type: Optional[Number]=None):
+    def __init__(self, start: Union[int, float],
+                 stop: Union[int, float, None]=None,
+                 default: Union[int, float, None]=None,
+                 scale: Union[int, float, None]=None, log: bool=False,
+                 shift: Union[int, float]=0, poly: Union[int, float]=1,
+                 forced_type: Optional[type]=None):
         self.start = start
         self.stop = stop or start
 
@@ -329,7 +331,7 @@ class Parameter(object):
         else:
             self.scale = abs(self.start - self.stop) / 3
 
-    def _mutate(self, scale: Number=1) -> float:
+    def _mutate(self, scale: Union[int, float]=1) -> float:
         c = (self._current + self.shift) ** (1/self.poly)
         s = (self.scale * scale) ** (1/self.poly)
         if self.log:
@@ -338,7 +340,7 @@ class Parameter(object):
             v = np.random.normal(loc=c, scale=s)
         return (v - self.shift)**self.poly
 
-    def mutate(self, scale: Number=1) -> 'Parameter':
+    def mutate(self, scale: Union[int, float]=1) -> 'Parameter':
         # Get value within bounds
         v = self._mutate(scale)
         while not self.start <= v <= self.stop:
@@ -348,7 +350,8 @@ class Parameter(object):
         return type(self)(self.start, self.stop, v, scale=self.scale,
                           log=self.log, forced_type=self.type)
 
-    def cross(self, other: 'Parameter', strength: Number=1) -> 'Parameter':
+    def cross(self, other: 'Parameter', strength: Union[int, float]=1) \
+            -> 'Parameter':
         c = (self._current + self.shift) ** (1/self.poly)
         o = (other._current + self.shift) ** (1/self.poly)
         if self.log:
@@ -366,7 +369,7 @@ class Parameter(object):
         return type(self)(self.start, self.stop, v, scale=self.scale,
                           log=self.log, forced_type=self.type)
 
-    def set(self, value: Number) -> Number:
+    def set(self, value: Union[int, float]) -> Union[int, float]:
         self._current = value
         return self.current
 
@@ -376,7 +379,7 @@ class Parameter(object):
                           forced_type=self.type)
 
     @property
-    def current(self) -> Number:
+    def current(self) -> Union[int, float]:
         if self.type == int:
             return rint(self._current)
         return self._current
