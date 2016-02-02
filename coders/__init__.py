@@ -103,6 +103,40 @@ def min_error(a, b, shift, l=None, w=0):
     return shifts[errors.argmin()]
 
 
+def mutate(a: 'Encoder', amount=0.3, strength=1):
+    new = type(a).copy()
+    for k, p_val in a.parameters.items():
+        p = getattr(new, k)  # type: 'Parameter'
+        p.set(p_val)
+        if np.random.random() <= amount:
+            print('mutating', k)
+            p = p.mutate(strength)
+        setattr(new, k, p)
+    return new()
+
+
+def breed(a: 'Encoder', b: 'Encoder', crossed_amount=0.3):
+    print(type(a), type(b))
+    new = type(a).copy()
+    for k, p_val in a.parameters.items():
+        p = getattr(new, k)  # type: 'Parameter'
+        if np.random.random() <= crossed_amount:
+            print('crossing', k)
+            p = a.parameters_[k].cross(b.parameters_[k])
+        elif np.random.randint(2):
+            print('a', k)
+            p.set(p_val)
+        else:
+            print('b', k)
+            p.set(getattr(b, k))
+        setattr(new, k, p)
+    return new()
+
+
+def fitness(bit_rate, error_rate, run_time=0):
+    return bit_rate/error_rate**2 + (run_time/60)**2
+
+
 class BitStream(np.ndarray):
 
     def __new__(cls, input_obj, symbolwidth=1):
