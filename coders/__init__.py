@@ -6,6 +6,7 @@ import scipy
 import scipy.signal
 import scipy.fftpack
 import scipy.stats
+import copy
 
 
 def val_split(a, partitions, range_max, range_min=0, size=True):
@@ -397,16 +398,24 @@ class Encoder(object, metaclass=ABCMeta):
         self.peak_threshold = self.peak_threshold.current
         print('Peak vars:', self.peak_range, self.peak_threshold)
 
+    def __repr__(self):
+        return '{}:\n    {}'.format(type(self).__name__, '\n    '.join(
+            '{}: {}'.format(p, v) for p, v in self.parameters.items()))
+
     def _post_init(self):
         cls = type(self)
-        parameters = {p: getattr(self, p) for p in dir(cls)
-                      if isinstance(getattr(cls, p), Parameter)}
+        self.parameters_ = {p: getattr(cls, p) for p in dir(cls)
+                            if isinstance(getattr(cls, p), Parameter)}
         self.parameters = {p: v.current if isinstance(v, Parameter) else v
-                           for p, v in parameters.items()}
+                           for p, v in self.parameters_.items()}
 
     def filter(self, stream):
         return stream.filter(self.filter_window, self.filter_shape,
                              self.filter_std)
+
+    @classmethod
+    def copy(cls):
+        return copy.deepcopy(cls)
 
     @abstractmethod
     def encode(self, stream):
