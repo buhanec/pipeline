@@ -312,7 +312,7 @@ class Parameter(object):
         return type(self)(self.start, self.stop, v, scale=self.scale,
                           log=self.log)
 
-    def cross(self, other: 'Parameter', strength=1, x=None) -> 'Parameter':
+    def cross(self, other: 'Parameter', strength=1) -> 'Parameter':
         c = (self._current + self.shift) ** (1/self.poly)
         o = (other._current + self.shift) ** (1/self.poly)
         if self.log:
@@ -320,9 +320,9 @@ class Parameter(object):
             o = np.log(o)
         if c < o:
             c, o = o, c
-        v = np.random.normal(loc=(o+c)/2, scale=(c-o)/3)
+        v = np.random.normal(loc=(o+c)/2, scale=(c-o)*strength/3)
         while not self.start < v < self.stop:
-            v = np.random.normal(loc=(o+c)/2, scale=(c-o)/3)
+            v = np.random.normal(loc=(o+c)/2, scale=(c-o)*strength/3)
         if self.log:
             v = np.e**v
 
