@@ -309,7 +309,7 @@ class Parameter(object):
         else:
             self.scale = abs(self.start - self.stop) / 3
 
-    def _random(self):
+    def _random(self) -> float:
         if self.log:
             r = np.log(self.stop) - np.log(self.start)
             x = np.e**(np.random.random() * r + np.log(self.start))
@@ -459,6 +459,13 @@ class Encoder(object, metaclass=ABCMeta):
         return {p: getattr(self, p) for p in dir(self)
                 if p != 'parameters' and
                 isinstance(getattr(self, p), Parameter)}
+
+    @classmethod
+    def random(cls) -> 'Encoder':
+        new = cls()
+        for p, v in new.parameters.items():
+            setattr(new, p, v.random())
+        return new
 
     def mutate(self, amount: float=1/3, scale=1) -> 'Encoder':
         new = type(self)()
