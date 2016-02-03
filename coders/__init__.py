@@ -298,13 +298,34 @@ class Parameter(object):
         self.shift = shift
 
         # Set default
-        self._current = default or (self.start + self.stop) / 2
+        if default is None:
+            self._current = self._random()
+        else:
+            self._current = default
 
         # Set scale
         if isinstance(scale, Number):
             self.scale = scale
         else:
             self.scale = abs(self.start - self.stop) / 3
+
+    def _random(self):
+        if self.log:
+            r = np.log(self.stop) - np.log(self.start)
+            x = np.e**(np.random.random() * r + np.log(self.start))
+        else:
+            r = self.stop - self.start
+            x = np.random.random() * r
+        if x < self.start:
+            return self.start
+        if x > self.stop:
+            return self.stop
+        return x
+
+    def random(self) -> 'Parameter':
+        return type(self)(self.start, self.stop, self._random(),
+                          scale=self.scale, log=self.log,
+                          forced_type=self.type)
 
     def _mutate(self, scale: float=1) -> float:
         c = (self._current + self.shift) ** (1/self.poly)
@@ -369,14 +390,14 @@ class Parameter(object):
     def __repr__(self) -> str:
         base = ('Parameter({}, {}, {}, scale={}'
                 .format(self.start, self.stop, round(self._current, 2),
-                        self.scale, self.log))
+                        round(self.scale, 2), self.log))
         if self.log:
             base += ', log=True'
         if self.shift != 0:
-            base += ', shift={}'.format(self.shift)
+            base += ', shift={}'.format(round(self.shift, 2))
         if self.poly != 1:
-            base += ', poly={}'.format(self.poly)
-        return base + ', forced_type={})'
+            base += ', poly={}'.format(round(self.poly, 2))
+        return base + ', forced_type={})'.format(self.type.__name__)
 
 
 class Encoder(object, metaclass=ABCMeta):
