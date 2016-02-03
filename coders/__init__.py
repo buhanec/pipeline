@@ -1,4 +1,4 @@
-from typing import Union, Tuple, List, Optional, Dict
+from typing import Union, Tuple, List, Optional, Dict, Any, Iterable
 from numbers import Number
 from abc import ABCMeta, abstractmethod
 import numpy as np
@@ -8,7 +8,8 @@ import scipy.fftpack
 import scipy.stats
 
 
-def val_split(a, partitions, range_max, range_min=0, size=True):
+def val_split(a: Iterable, partitions: int, range_max: int, range_min: int=0,
+              size: bool=True) -> List[np.ndarray]:
     if size:
         n = int(np.ceil(range_max / partitions))
         splits = partitions
@@ -42,12 +43,12 @@ def val_split(a, partitions, range_max, range_min=0, size=True):
         return list(map(np.array, ret_val))
 
 
-def rint(a):
+def rint(a: Number) -> int:
     return np.round(a).astype(int)
 
 
-def cyclic_d(values, lim):
-    values = values % lim
+def cyclic_d(values: np.ndarray, lim: int) -> int:
+    values %= lim
     lim_case = np.array([np.minimum(np.square(values - lim),
                                     np.square(values))])
     m = np.array([np.minimum(np.square(n - values),
@@ -56,7 +57,7 @@ def cyclic_d(values, lim):
     return np.concatenate((lim_case, m), axis=0).mean(axis=1).argmin()
 
 
-def c2p(v):
+def c2p(v: Union[Tuple, List, np.ndarray]) -> np.ndarray:
     if not isinstance(v, np.ndarray):
         v = np.array(v)
     if len(v.shape) == 1:
@@ -65,7 +66,7 @@ def c2p(v):
                      np.arctan2(v[:, 1], v[:, 0]) % (2*np.pi)]).T
 
 
-def p2c(v):
+def p2c(v: Union[Tuple, List, np.ndarray]) -> np.ndarray:
     if not isinstance(v, np.ndarray):
         v = np.array(v)
     if len(v.shape) == 1:
@@ -74,7 +75,7 @@ def p2c(v):
                       np.sin(v[:, 1])]) * v[:, 0] * np.sqrt(2)).T
 
 
-def sync_padding(coder, duration=0.4):
+def sync_padding(coder: 'Encoder', duration: float=0.4) -> 'WavStream':
     transition = rint(duration * 0.15 * coder.r)
     total = rint(duration * coder.r)
 
@@ -88,11 +89,13 @@ def sync_padding(coder, duration=0.4):
     return WavStream(base * transform, coder.r, total)
 
 
-def ease(x: Union[Number, np.ndarray], a=2):
+def ease(x: Union[Number, np.ndarray], a: Number=2) \
+        -> Union[Number, np.ndarray]:
     return x**a / (x**a + (1 - x)**a)
 
 
-def min_error(a, b, shift, l=None, w=0):
+def min_error(a: np.ndarray, b: np.ndarray, shift: int, l: Optional[int]=None,
+              w: int=0) -> int:
     if l is None:
         l = len(a)
     shifts = np.arange(-shift, shift)
@@ -101,13 +104,13 @@ def min_error(a, b, shift, l=None, w=0):
     return shifts[errors.argmin()]
 
 
-def fitness(bit_rate, error_rate, run_time=0):
-    return bit_rate/error_rate**2 + (run_time/60)**2
+def fitness(bit_rate: float, error_rate: float) -> float:
+    return bit_rate/error_rate**2
 
 
 class BitStream(np.ndarray):
 
-    def __new__(cls, input_obj, symbolwidth=1):
+    def __new__(cls, input_obj, symbolwidth: int=1):
         obj = np.array(input_obj, dtype=int).view(cls)
         obj.symbolwidth = symbolwidth
         return obj
@@ -117,7 +120,7 @@ class BitStream(np.ndarray):
             return
         self.symbolwidth = getattr(obj, 'symbolwidth', None)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         if self.symbolwidth > 1:
             source = super().__repr__().splitlines()
             extra = ', symbolwidth={}'.format(self.symbolwidth)
@@ -143,7 +146,7 @@ class BitStream(np.ndarray):
         return type(src)([int(''.join(s), 2) for s in new],
                          symbolwidth=symbolwidth)
 
-    def __eq__(self, other):
+    def __eq__(self, other: Any) -> Union[bool, List[bool]]:
         self_ = self
         other_ = other
         if isinstance(other_, BitStream):
@@ -160,7 +163,7 @@ class WavStream(np.ndarray):
 
     DEFAULT_PEAK_WIDTH = np.arange(20, 21)
 
-    def __new__(cls, input_obj, rate, symbol_len):
+    def __new__(cls, input_obj, rate: int, symbol_len: int):
         obj = np.asarray(input_obj, dtype=float).view(cls)
         obj.rate = rate
         obj.symbol_len = symbol_len
@@ -186,7 +189,8 @@ class WavStream(np.ndarray):
         yf = 2/d * np.abs(scipy.fftpack.fft(self)[:d/2])
         return xf, yf
 
-    def filter(self, window_size, shape, std) -> 'WavStream':
+    def filter(self, window_size: int, shape: float, std: float) \
+            -> 'WavStream':
         window = scipy.signal.general_gaussian(window_size, p=shape, sig=std)
         stream_f = type(self)(scipy.signal.fftconvolve(window, self),
                               rate=self.rate,
@@ -203,8 +207,10 @@ class WavStream(np.ndarray):
     # TODO: look at https://gist.github.com/endolith/250860 (alt)
     # TODO: recheck relocate_peak value
     @classmethod
-    def _peaks(cls, stream, peak_width=None, threshold=5.0e-2, ref=None,
-               relocate_peak=False):
+    def _peaks(cls, stream: np.ndarray, peak_width: Optional[np.ndarray]=None,
+               threshold: float=5.0e-2, ref: List=None,
+               relocate_peak: bool=False) \
+            -> List[Union[Tuple[int, float], Tuple[int, float, float]]]:
         # Results list
         peaks = []
         # Prepare some args because binding objects in defaults
@@ -226,16 +232,17 @@ class WavStream(np.ndarray):
                     peaks.append((m, stream[m]))
         return peaks
 
-    def fft_peaks(self, peak_width=None, threshold=5.0e-2, debug=False) \
+    def fft_peaks(self, peak_width: Optional[np.ndarray]=None,
+                  threshold: float=5.0e-2, axis: bool=False) \
             -> List[Tuple[int, float, float]]:
         xf, yf = self.fft()
-        if debug:
+        if axis:
             return xf, yf
         return self._peaks(yf, peak_width, threshold, relocate_peak=True,
                            ref=xf)
 
-    def peaks(self, peak_width=None, threshold=5.0e-2) \
-            -> List[Tuple[int, float]]:
+    def peaks(self, peak_width: Optional[np.ndarray]=None,
+              threshold: float=5.0e-2) -> List[Tuple[int, float]]:
         results = (self._peaks(self, peak_width, threshold) +
                    list(map(lambda v: (v[0], -v[1]),
                             self._peaks(-self, peak_width, threshold))))
@@ -243,7 +250,7 @@ class WavStream(np.ndarray):
         return results
 
     # TODO: optimize and improve
-    def zeroes(self, zero_width=20, threshold=0.25):
+    def zeroes(self, zero_width: int=20, threshold: float=0.25) -> List[int]:
         results = np.where(np.logical_and(self > -threshold,
                                           self < threshold))[0]
         if not len(results):
@@ -419,7 +426,7 @@ class Encoder(object, metaclass=ABCMeta):
         self.peak_range = p_range[::p_num]
         print('Peak vars:', self.peak_range, self.peak_threshold.c)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return '{}:\n    {}'.format(type(self).__name__, '\n    '.join(
             '{}: {}'.format(p, v.c) for p, v in self.parameters.items()))
 
