@@ -1,4 +1,4 @@
-from typing import Union, Tuple, List, Optional
+from typing import Union, Tuple, List, Optional, Dict
 from numbers import Number
 from abc import ABCMeta, abstractmethod
 import numpy as np
@@ -6,7 +6,6 @@ import scipy
 import scipy.signal
 import scipy.fftpack
 import scipy.stats
-import copy
 
 
 def val_split(a, partitions, range_max, range_min=0, size=True):
@@ -89,7 +88,6 @@ def sync_padding(coder, duration=0.4):
     return WavStream(base * transform, coder.r, total)
 
 
-# TODO: replace with window = scipy.signal.gaussian(51, std=7)
 def ease(x: Union[Number, np.ndarray], a=2):
     return x**a / (x**a + (1 - x)**a)
 
@@ -101,36 +99,6 @@ def min_error(a, b, shift, l=None, w=0):
     errors = np.array([np.square(a[w:l-w] - b[w+n:l-w+n]).sum().item()
                        for n in shifts])
     return shifts[errors.argmin()]
-
-
-def mutate(a: 'Encoder', amount=0.3, strength=1):
-    new = type(a).copy()
-    for k, p_val in a.parameters.items():
-        p = getattr(new, k)  # type: 'Parameter'
-        p.set(p_val)
-        if np.random.random() <= amount:
-            print('mutating', k)
-            p = p.mutate(strength)
-        setattr(new, k, p)
-    return new()
-
-
-def breed(a: 'Encoder', b: 'Encoder', crossed_amount=0.3):
-    print(type(a), type(b))
-    new = type(a).copy()
-    for k, p_val in a.parameters.items():
-        p = getattr(new, k)  # type: 'Parameter'
-        if np.random.random() <= crossed_amount:
-            print('crossing', k)
-            p = a.parameters_[k].cross(b.parameters_[k])
-        elif np.random.randint(2):
-            print('a', k)
-            p.set(p_val)
-        else:
-            print('b', k)
-            p.set(getattr(b, k))
-        setattr(new, k, p)
-    return new()
 
 
 def fitness(bit_rate, error_rate, run_time=0):
@@ -331,7 +299,7 @@ class Parameter(object):
         else:
             self.scale = abs(self.start - self.stop) / 3
 
-    def _mutate(self, scale: Union[int, float]=1) -> float:
+    def _mutate(self, scale: float=1) -> float:
         c = (self._current + self.shift) ** (1/self.poly)
         s = (self.scale * scale) ** (1/self.poly)
         if self.log:
@@ -340,7 +308,7 @@ class Parameter(object):
             v = np.random.normal(loc=c, scale=s)
         return (v - self.shift)**self.poly
 
-    def mutate(self, scale: Union[int, float]=1) -> 'Parameter':
+    def mutate(self, scale: float=1) -> 'Parameter':
         # Get value within bounds
         v = self._mutate(scale)
         while not self.start <= v <= self.stop:
@@ -350,7 +318,7 @@ class Parameter(object):
         return type(self)(self.start, self.stop, v, scale=self.scale,
                           log=self.log, forced_type=self.type)
 
-    def cross(self, other: 'Parameter', strength: Union[int, float]=1) \
+    def cross(self, other: 'Parameter', strength: float=1) \
             -> 'Parameter':
         c = (self._current + self.shift) ** (1/self.poly)
         o = (other._current + self.shift) ** (1/self.poly)
@@ -384,6 +352,10 @@ class Parameter(object):
             return rint(self._current)
         return self._current
 
+    @property
+    def c(self) -> Union[int, float]:
+        return self.current
+
     def __repr__(self) -> str:
         base = ('Parameter({}, {}, {}, scale={}'
                 .format(self.start, self.stop, round(self._current, 2),
@@ -415,68 +387,83 @@ class Encoder(object, metaclass=ABCMeta):
     peak_threshold = Parameter(0.0, 1.0, 5.0e-3)
 
     def __init__(self):
+        # Clone parameters
+        for p, v in self.parameters.items():
+            setattr(self, p, v.copy())
+
         # Main vars
-        self.symbol_width = self.symbol_width.current
-        self.symbol_size = 2**self.symbol_width
-        self.symbol_duration = self.symbol_duration.current
-        self.f = self.frequency.current
-        self.r = self.rate.current
-        print('Main vars:', self.f, self.r, self.symbol_width,
-              self.symbol_duration)
+        self.symbol_size = 2**self.symbol_width.c
+        self.f = self.frequency.c
+        self.r = self.rate.c
+        print('Main vars:', self.f, self.r, self.symbol_width.c,
+              self.symbol_duration.c)
 
         # Secondary vars
         self.λ = self.r / self.f
-        self.symbol_len = rint(self.r * self.symbol_duration)
+        self.symbol_len = rint(self.r * self.symbol_duration.c)
         print('Secondary vars:', round(self.λ), self.symbol_len)
 
         # Filter vars
-        self.filter_window = rint(self.filter_window_base.current +
-                                  self.filter_window_scale.current * self.λ)
-        self.filter_shape = self.filter_shape.current
-        self.filter_std = rint(self.filter_std_base.current +
-                               self.filter_std_scale.current * self.λ)
-        print('Filter vars:', self.filter_window, self.filter_shape,
+        self.filter_window = rint(self.filter_window_base.c +
+                                  self.filter_window_scale.c * self.λ)
+        self.filter_std = rint(self.filter_std_base.c +
+                               self.filter_std_scale.c * self.λ)
+        print('Filter vars:', self.filter_window, self.filter_shape.c,
               self.filter_std)
 
         # Peak vars
-        p_start = max(1, rint(self.peak_width_start.current * self.λ))
-        p_span = max(1, rint(self.peak_width_span.current * self.λ))
+        p_start = max(1, rint(self.peak_width_start.c * self.λ))
+        p_span = max(1, rint(self.peak_width_span.c * self.λ))
         p_range = np.arange(p_start, p_start + p_span)
         p_num = max(1, len(p_range) // 5)
         self.peak_range = p_range[::p_num]
-        self.peak_threshold = self.peak_threshold.current
-        print('Peak vars:', self.peak_range, self.peak_threshold)
+        print('Peak vars:', self.peak_range, self.peak_threshold.c)
 
     def __repr__(self):
         return '{}:\n    {}'.format(type(self).__name__, '\n    '.join(
-            '{}: {}'.format(p, v) for p, v in self.parameters.items()))
+            '{}: {}'.format(p, v.c) for p, v in self.parameters.items()))
 
-    def _post_init(self):
-        cls = type(self)
-        self.parameters_ = {p: getattr(cls, p) for p in dir(cls)
-                            if isinstance(getattr(cls, p), Parameter)}
-        self.parameters = {p: v.current if isinstance(v, Parameter) else v
-                           for p, v in self.parameters_.items()}
+    @property
+    def parameters(self) -> Dict[str, Parameter]:
+        return {p: getattr(self, p) for p in dir(self)
+                if p != 'parameters' and
+                isinstance(getattr(self, p), Parameter)}
 
-    def filter(self, stream):
-        return stream.filter(self.filter_window, self.filter_shape,
+    def mutate(self, amount: float=1/3, scale=1) -> 'Encoder':
+        new = type(self)()
+        for p, v in self.parameters.items():
+            if np.random.random() <= amount:
+                print('mutating', p)
+                v = v.mutate(scale)
+            getattr(new, p).set(v.c)
+        return new
+
+    def cross(self, other: 'Encoder', crossed_amount: float=1/3) -> 'Encoder':
+        new = type(self)()
+        for p, v in self.parameters.items():
+            if np.random.random() <= crossed_amount:
+                print('crossing', p)
+                v = v.cross(getattr(other, p))
+            elif np.random.randint(2):
+                print('stealing', p)
+                v = getattr(other, p)
+            getattr(new, p).set(v.c)
+        return new
+
+    def filter(self, stream: WavStream) -> WavStream:
+        return stream.filter(self.filter_window, self.filter_shape.c,
                              self.filter_std)
 
-    @classmethod
-    def copy(cls):
-        return copy.deepcopy(cls)
-
     @abstractmethod
-    def encode(self, stream):
+    def encode(self, stream: BitStream) -> WavStream:
         pass
 
     @abstractmethod
-    def decode(self, stream):
+    def decode(self, stream: WavStream) -> BitStream:
         pass
 
 
-# TODO: omit first/last peak
-# TODO: separate levels for decoding
+# TODO: second levels parameter for decoding balance
 class SimpleASK(Encoder):
 
     high_amplitude = Parameter(0.0, 1.0, 0.8)
@@ -484,14 +471,12 @@ class SimpleASK(Encoder):
 
     def __init__(self):
         super().__init__()
-        self.high_amp = self.high_amplitude.current
-        self.low_amp = self.low_amplitude.current * self.high_amp
-        self.step_amp = ((self.high_amp - self.low_amp) /
+        self.low_amp = self.low_amplitude.c * self.high_amplitude.c
+        self.step_amp = ((self.high_amplitude.c * (1 - self.low_amplitude.c)) /
                          (self.symbol_size - 1))
-        super()._post_init()
 
-    def encode(self, stream: BitStream):
-        stream = stream.assymbolwidth(self.symbol_width)
+    def encode(self, stream: BitStream) -> WavStream:
+        stream = stream.assymbolwidth(self.symbol_width.c)
         stream_len = len(stream) * self.symbol_len
         stream_max = (self.f * 2 * np.pi * len(stream) * self.symbol_len /
                       self.r)
@@ -502,38 +487,31 @@ class SimpleASK(Encoder):
         return WavStream(np.sin(base) * reshape.repeat(self.symbol_len),
                          self.r, self.symbol_len)
 
-    def decode(self, stream):
-        symbol_len = rint(stream.rate * self.symbol_duration)
-        levels, _ = np.linspace(self.low_amp, self.high_amp, self.symbol_size,
-                                retstep=True)
+    def decode(self, stream: WavStream) -> BitStream:
+        symbol_len = rint(stream.rate * self.symbol_duration.c)
+        levels, _ = np.linspace(self.low_amp, self.high_amplitude.c,
+                                self.symbol_size, retstep=True)
         stream = self.filter(WavStream(stream, stream.rate, symbol_len))
 
         retval = []
         for symbol in stream.symbols():
             peaks = np.array(symbol.peaks(self.peak_range,
-                                          self.peak_threshold))
+                                          self.peak_threshold.c))
             # TODO: repeat peaks and do square distance from levels
             peak = np.abs(peaks[:, 1]).mean()
             value = np.square(levels - peak).argmin()
             print('>', value, round(peak, 2))
             retval.append(value)
-        return BitStream(retval, symbolwidth=self.symbol_width)
+        return BitStream(retval, symbolwidth=self.symbol_width.c)
 
 
-# TODO: omit first/last peak
 class SimplePSK(Encoder):
 
     zeroes_width = Parameter(0.05, 1.0, 0.2)
     zeroes_threshold = Parameter(0.0, 1.0, 0.25)
 
-    def __init__(self):
-        super().__init__()
-        self.zeroes_width = rint(self.zeroes_width.current * self.λ)
-        self.zeroes_threshold = self.zeroes_threshold.current
-        super()._post_init()
-
-    def encode(self, stream: BitStream):
-        stream = stream.assymbolwidth(self.symbol_width)
+    def encode(self, stream: BitStream) -> WavStream:
+        stream = stream.assymbolwidth(self.symbol_width.c)
         stream_len = len(stream) * self.symbol_len
         stream_max = (self.f * 2 * np.pi * len(stream) * self.symbol_len /
                       self.r)
@@ -544,14 +522,15 @@ class SimplePSK(Encoder):
         return WavStream(np.sin(base - shifts.repeat(self.symbol_len)),
                          self.r, self.symbol_len)
 
-    def decode(self, stream):
+    def decode(self, stream: WavStream) -> BitStream:
         λ = stream.rate / self.f
-        symbol_len = rint(stream.rate * self.symbol_duration)
+        symbol_len = rint(stream.rate * self.symbol_duration.c)
         stream = self.filter(WavStream(stream, stream.rate, symbol_len))
 
         retval = []
         for s in stream.symbols():
-            peaks = np.array(s.peaks(self.peak_range, self.peak_threshold))
+            peaks = np.array(s.peaks(self.peak_range,
+                                     self.peak_threshold.c))
             positives = peaks[:, 0][peaks[:, 1] > 0]
             negatives = peaks[:, 0][peaks[:, 1] < 0]
             negatives2 = np.array(negatives) % λ / λ + 0.25
@@ -561,16 +540,16 @@ class SimplePSK(Encoder):
             value = cyclic_d(peaks_stream, self.symbol_size)
             retval.append(value)
             print('>', value, peaks_stream.mean().round(2))
-        return BitStream(retval, symbolwidth=self.symbol_width)
+        return BitStream(retval, symbolwidth=self.symbol_width.c)
 
     # TODO: reevaluate with better peaks implementation
-    def decode_(self, stream):
+    def decode_(self, stream: WavStream) -> BitStream:
         λ = stream.rate / self.f
-        symbol_len = rint(stream.rate * self.symbol_duration)
+        symbol_len = rint(stream.rate * self.symbol_duration.c)
         stream_len = len(stream)
         stream = self.filter(WavStream(stream, stream.rate, symbol_len))
 
-        peaks = np.array(stream.peaks(self.peak_range, self.peak_threshold))
+        peaks = np.array(stream.peaks(self.peak_range, self.peak_threshold.c))
         positives = peaks[:, 0][peaks[:, 1] > 0]
         negatives = peaks[:, 0][peaks[:, 1] < 0]
         positives2 = val_split(positives, symbol_len, stream_len, size=True)
@@ -587,12 +566,13 @@ class SimplePSK(Encoder):
             print('>', p.mean().round(2))
 
         # TODO: zeroes reinforcement
-        # zeroes = stream.zeroes(self.zeroes_width, self.zeroes_threshold)
+        # zeroes = stream.zeroes(rint(self.zeroes_width.c * self.λ),
+        #                        self.zeroes_threshold.c)
         # zeroes = val_split(zeroes, symbol_len, stream_len, size=True)
 
         return BitStream(list(map(lambda v: cyclic_d(v, self.symbol_size),
                                   peaks_stream)),
-                         symbolwidth=self.symbol_width)
+                         symbolwidth=self.symbol_width.c)
 
 
 class SimpleFSK(Encoder):
@@ -601,13 +581,12 @@ class SimpleFSK(Encoder):
 
     def __init__(self):
         super().__init__()
-        self.f_low = self.f * (1 - self.frequency_dev.current)
-        self.f_high = self.f * (1 + self.frequency_dev.current)
+        self.f_low = self.f * (1 - self.frequency_dev.c)
+        self.f_high = self.f * (1 + self.frequency_dev.c)
         self.f_step = (self.f_high - self.f_low) / (self.symbol_size - 1)
-        super()._post_init()
 
-    def encode(self, stream: BitStream):
-        stream = stream.assymbolwidth(self.symbol_width)
+    def encode(self, stream: BitStream) -> WavStream:
+        stream = stream.assymbolwidth(self.symbol_width.c)
         stream_len = len(stream) * self.symbol_len
         stream_max = 2 * np.pi * len(stream) * self.symbol_len / self.r
 
@@ -617,8 +596,8 @@ class SimpleFSK(Encoder):
         return WavStream(np.sin(base * f_map.repeat(self.symbol_len)),
                          self.r, self.symbol_len)
 
-    def decode(self, stream):
-        symbol_len = rint(stream.rate * self.symbol_duration)
+    def decode(self, stream: WavStream) -> BitStream:
+        symbol_len = rint(stream.rate * self.symbol_duration.c)
         levels, _ = np.linspace(self.f_low, self.f_high, self.symbol_size,
                                 retstep=True)
         stream = self.filter(WavStream(stream, stream.rate, symbol_len))
@@ -626,12 +605,12 @@ class SimpleFSK(Encoder):
         retval = []
         for symbol in stream.symbols():
             peaks = np.array(symbol.fft_peaks(self.peak_range,
-                                              self.peak_threshold))
+                                              self.peak_threshold.c))
             peak = np.average(peaks[:, 2], weights=peaks[:, 1])
             value = np.square(levels - peak).argmin()
             print('>', value, peak.round(2))
             retval.append(value)
-        return BitStream(retval, symbolwidth=self.symbol_width)
+        return BitStream(retval, symbolwidth=self.symbol_width.c)
 
 
 class SimpleQAM(Encoder):
@@ -640,15 +619,13 @@ class SimpleQAM(Encoder):
 
     def __init__(self):
         super().__init__()
-        self.symbol_width = self.symbol_width  # type: int
         # TODO: generate constellation based on symbol width
         self.cartesian = np.array([[x, y] for x in np.linspace(-1, 1, 4)
                                    for y in np.linspace(-1, 1, 4)])
         self.polar = c2p(self.cartesian)
-        super()._post_init()
 
-    def encode(self, stream):
-        stream = stream.assymbolwidth(self.symbol_width)
+    def encode(self, stream: BitStream) -> WavStream:
+        stream = stream.assymbolwidth(self.symbol_width.c)
         stream_len = len(stream) * self.symbol_len
         stream_max = (self.f * 2 * np.pi * len(stream) * self.symbol_len /
                       self.r)
@@ -661,14 +638,14 @@ class SimpleQAM(Encoder):
                          qam_map[:, 0].repeat(self.symbol_len), self.r,
                          self.symbol_len)
 
-    def decode(self, stream):
+    def decode(self, stream: WavStream) -> BitStream:
         λ = stream.rate / self.f
-        symbol_len = rint(stream.rate * self.symbol_duration)
+        symbol_len = rint(stream.rate * self.symbol_duration.c)
         stream = self.filter(WavStream(stream, stream.rate, symbol_len))
 
         retval = []
         for s in stream.symbols():
-            peaks = np.array(s.peaks(self.peak_range, self.peak_threshold))
+            peaks = np.array(s.peaks(self.peak_range, self.peak_threshold.c))
             # TODO: squared distance from levels
             amp = np.abs(peaks)[:, 1].mean()
             positives = peaks[:, 0][peaks[:, 1] > 0]
@@ -686,15 +663,16 @@ class SimpleQAM(Encoder):
             value = temp2.argmin()
             retval.append(value)
             print('>', value, cartesian.round(2), polar.round(2))
-        return BitStream(retval, symbolwidth=self.symbol_width)
+        return BitStream(retval, symbolwidth=self.symbol_width.c)
 
-    def decode_(self, stream):
+    # TODO: reevaluate with better peaks implementation
+    def decode_(self, stream: WavStream) -> BitStream:
         λ = stream.rate / self.f
-        symbol_len = rint(stream.rate * self.symbol_duration)
+        symbol_len = rint(stream.rate * self.symbol_duration.c)
         stream_len = len(stream)
         stream = self.filter(WavStream(stream, stream.rate, symbol_len))
 
-        peaks = np.array(stream.peaks(self.peak_range, self.peak_threshold))
+        peaks = np.array(stream.peaks(self.peak_range, self.peak_threshold.c))
         amp = val_split(np.abs(peaks), symbol_len, stream_len, size=True)
         amp2 = [v[:, 1].mean() for v in amp]
         positives = peaks[:, 0][peaks[:, 1] > 0]
@@ -718,4 +696,4 @@ class SimpleQAM(Encoder):
             value = temp2.argmin()
             print('>', value, c.round(2))
             retval.append(value)
-        return BitStream(retval, symbolwidth=self.symbol_width)
+        return BitStream(retval, symbolwidth=self.symbol_width.c)
