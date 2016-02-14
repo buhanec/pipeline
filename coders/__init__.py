@@ -357,12 +357,10 @@ class Parameter(object):
             o = np.log(o)
         if c < o:
             c, o = o, c
-        if c-o <= 0:
-            v = c
-        else:
-            v = np.random.normal(loc=(o+c)/2, scale=(c-o)*strength/3)
+        s = max((c - o)*strength/3, self.scale/4)
+        v = np.random.normal(loc=(o+c)/2, scale=s)
         while not self.start <= v <= self.stop:
-            v = np.random.normal(loc=(o+c)/2, scale=(c-o)*strength/3)
+            v = np.random.normal(loc=(o+c)/2, scale=s)
         if self.log:
             v = np.e**v
 
