@@ -317,7 +317,7 @@ class Parameter(object):
             x = np.e**(np.random.random() * r + np.log(self.start))
         else:
             r = self.stop - self.start
-            x = np.random.random() * r
+            x = np.random.random() * r + self.start
         if x < self.start:
             return self.start
         if x > self.stop:
