@@ -284,6 +284,8 @@ class Parameter(object):
                  forced_type: Optional[type]=None):
         self.start = start
         self.stop = stop or start
+        if self.start > self.stop:
+            self.start, self.stop = self.stop, self.start
 
         # Type and is log
         if forced_type is not None:
