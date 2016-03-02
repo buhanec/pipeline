@@ -101,6 +101,8 @@ def min_error(a: np.ndarray, b: np.ndarray, shift: int, l: Optional[int]=None,
     shifts = np.arange(-shift, shift)
     errors = np.array([np.square(a[w:l-w] - b[w+n:l-w+n]).sum().item()
                        for n in shifts])
+    if not len(errors):
+        return 0
     return shifts[errors.argmin()]
 
 
