@@ -275,6 +275,10 @@ class WavStream(np.ndarray):
             merged.append(int(round(np.mean(current))))
         return merged
 
+    @property
+    def duration(self) -> float:
+        return len(self) / self.rate
+
 
 class Parameter(object):
 
