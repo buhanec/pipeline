@@ -497,7 +497,10 @@ class Encoder(object, metaclass=ABCMeta):
             getattr(new, p).set(v.c)
         return new
 
-    def filter(self, stream: WavStream) -> WavStream:
+    # TODO: assess with filter
+    def filter(self, stream: WavStream, disable=True) -> WavStream:
+        if disable:
+            return stream
         return stream.filter(self.filter_window, self.filter_shape.c,
                              self.filter_std)
 
