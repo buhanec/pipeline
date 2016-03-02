@@ -473,6 +473,9 @@ class Encoder(object, metaclass=ABCMeta):
             setattr(new, p, v.random())
         return new
 
+    def reinit(self):
+        self.__init__()
+
     def mutate(self, amount: float=1/3, scale=1) -> 'Encoder':
         new = type(self)()
         for p, v in self.parameters.items():
