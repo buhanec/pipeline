@@ -110,6 +110,15 @@ def fitness(bit_rate: float, error_rate: float) -> float:
     return bit_rate/error_rate**2
 
 
+def trimmean(a, min_num=1, percent=0.2, strength=0.2):
+    if len(a) == 1:
+        return a[0]
+    num = max(min_num, rint(len(a) * percent))
+    weight = len(a) - 2 * num * (1 - strength)
+    s = sum(a[:num]) * strength + sum(a[num:-num]) + sum(a[-num:]) * strength
+    return s / weight
+
+
 class BitStream(np.ndarray):
 
     def __new__(cls, input_obj, symbolwidth: int=1):
@@ -550,7 +559,7 @@ class SimpleASK(Encoder):
             peaks = np.array(symbol.peaks(self.peak_range,
                                           self.peak_threshold.c))
             # TODO: repeat peaks and do square distance from levels
-            peak = np.abs(peaks[:, 1]).mean()
+            peak = trimmean(np.abs(peaks[:, 1]))
             value = np.square(levels - peak).argmin()
             print('>', value, round(peak, 2))
             retval.append(value)
