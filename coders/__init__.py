@@ -244,8 +244,10 @@ class WavStream(np.ndarray):
                            ref=xf)
 
     def peaks(self, peak_width: Optional[np.ndarray]=None,
-              threshold: float=5.0e-2) -> List[Tuple[int, float]]:
-        results = (self._peaks(self, peak_width, threshold) +
+              threshold: float=5.0e-2, relocate_peak: bool=True) \
+            -> List[Tuple[int, float]]:
+        results = (self._peaks(self, peak_width, threshold,
+                               relocate_peak=relocate_peak) +
                    list(map(lambda v: (v[0], -v[1]),
                             self._peaks(-self, peak_width, threshold))))
         results.sort(key=lambda v: v[0])
