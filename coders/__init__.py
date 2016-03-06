@@ -476,19 +476,19 @@ class Encoder(object, metaclass=ABCMeta):
     def reinit(self):
         self.__init__()
 
-    def mutate(self, amount: float=1/3, scale=1) -> 'Encoder':
+    def mutate(self, amount: float=1/3, scale: float=1) -> 'Encoder':
         new = type(self)()
         for p, v in self.parameters.items():
-            if np.random.random() <= amount:
+            if amount > np.random.random():
                 print('mutating', p)
                 v = v.mutate(scale)
             getattr(new, p).set(v.c)
         return new
 
-    def cross(self, other: 'Encoder', crossed_amount: float=1/3) -> 'Encoder':
+    def cross(self, other: 'Encoder', amount: float=1/3) -> 'Encoder':
         new = type(self)()
         for p, v in self.parameters.items():
-            if np.random.random() <= crossed_amount:
+            if amount > np.random.random():
                 print('crossing', p)
                 v = v.cross(getattr(other, p))
             elif np.random.randint(2):
