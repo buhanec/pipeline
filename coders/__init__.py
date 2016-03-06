@@ -500,9 +500,7 @@ class Encoder(object, metaclass=ABCMeta):
         return new
 
     # TODO: assess with filter
-    def filter(self, stream: WavStream, disable=True) -> WavStream:
-        if disable:
-            return stream
+    def filter(self, stream: WavStream) -> WavStream:
         return stream.filter(self.filter_window, self.filter_shape.c,
                              self.filter_std)
 
@@ -511,7 +509,7 @@ class Encoder(object, metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def decode(self, stream: WavStream) -> BitStream:
+    def decode(self, stream: WavStream, filter_stream: bool=True) -> BitStream:
         pass
 
 
@@ -539,11 +537,13 @@ class SimpleASK(Encoder):
         return WavStream(np.sin(base) * reshape.repeat(self.symbol_len),
                          self.r, self.symbol_len)
 
-    def decode(self, stream: WavStream) -> BitStream:
+    def decode(self, stream: WavStream, filter_stream: bool=True) -> BitStream:
         symbol_len = rint(stream.rate * self.symbol_duration.c)
         levels, _ = np.linspace(self.low_amp, self.high_amplitude.c,
                                 self.symbol_size, retstep=True)
-        stream = self.filter(WavStream(stream, stream.rate, symbol_len))
+
+        if filter_stream:
+            stream = self.filter(WavStream(stream, stream.rate, symbol_len))
 
         retval = []
         for symbol in stream.symbols():
@@ -574,10 +574,12 @@ class SimplePSK(Encoder):
         return WavStream(np.sin(base - shifts.repeat(self.symbol_len)),
                          self.r, self.symbol_len)
 
-    def decode(self, stream: WavStream) -> BitStream:
+    def decode(self, stream: WavStream, filter_stream: bool=True) -> BitStream:
         λ = stream.rate / self.f
         symbol_len = rint(stream.rate * self.symbol_duration.c)
-        stream = self.filter(WavStream(stream, stream.rate, symbol_len))
+
+        if filter_stream:
+            stream = self.filter(WavStream(stream, stream.rate, symbol_len))
 
         retval = []
         for s in stream.symbols():
@@ -648,11 +650,12 @@ class SimpleFSK(Encoder):
         return WavStream(np.sin(base * f_map.repeat(self.symbol_len)),
                          self.r, self.symbol_len)
 
-    def decode(self, stream: WavStream) -> BitStream:
+    def decode(self, stream: WavStream, filter_stream: bool=True) -> BitStream:
         symbol_len = rint(stream.rate * self.symbol_duration.c)
         levels, _ = np.linspace(self.f_low, self.f_high, self.symbol_size,
                                 retstep=True)
-        stream = self.filter(WavStream(stream, stream.rate, symbol_len))
+        if filter_stream:
+            stream = self.filter(WavStream(stream, stream.rate, symbol_len))
 
         retval = []
         for symbol in stream.symbols():
@@ -690,10 +693,12 @@ class SimpleQAM(Encoder):
                          qam_map[:, 0].repeat(self.symbol_len), self.r,
                          self.symbol_len)
 
-    def decode(self, stream: WavStream) -> BitStream:
+    def decode(self, stream: WavStream, filter_stream: bool=True) -> BitStream:
         λ = stream.rate / self.f
         symbol_len = rint(stream.rate * self.symbol_duration.c)
-        stream = self.filter(WavStream(stream, stream.rate, symbol_len))
+
+        if filter_stream:
+            stream = self.filter(WavStream(stream, stream.rate, symbol_len))
 
         retval = []
         for s in stream.symbols():
