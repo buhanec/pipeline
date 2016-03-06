@@ -421,7 +421,7 @@ class Encoder(object, metaclass=ABCMeta):
     filter_std_base = Parameter(1, 250, 10)
     filter_std_scale = Parameter(0.0, 0.5, 0.05)
 
-    peak_width_start = Parameter(0.0, 1.0, 0.2)
+    peak_width_start = Parameter(0.0, 1.0, 0.4)
     peak_width_span = Parameter(0.0, 1.0, 0.0)
     peak_threshold = Parameter(0.0, 1.0, 5.0e-3)
 
