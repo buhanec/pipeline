@@ -169,6 +169,9 @@ class BitStream(np.ndarray):
                 self_ = self_[:len(other_)]
         return super(BitStream, self_).__eq__(other_)
 
+    def __len__(self):
+        return super().__len__()
+
 
 class WavStream(np.ndarray):
 
@@ -289,6 +292,9 @@ class WavStream(np.ndarray):
     @property
     def duration(self) -> float:
         return len(self) / self.rate
+
+    def __len__(self):
+        return super().__len__()
 
 
 class Parameter(object):
