@@ -94,6 +94,10 @@ def ease(x: Union[Number, np.ndarray], a: Number=2) \
     return x**a / (x**a + (1 - x)**a)
 
 
+def error(a: np.ndarray, b: np.ndarray):
+    return np.square(a - b).sum().item()
+
+
 def min_error(a: np.ndarray, b: np.ndarray, shift: int, l: Optional[int]=None,
               w: int=0) -> int:
     if l is None:
