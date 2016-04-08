@@ -448,10 +448,11 @@ class Parameter(object):
 class Encoder(object, metaclass=ABCMeta):
 
     symbol_width = Parameter(1, 3, 2)
-    symbol_duration = Parameter(0.001, 1.0, 0.2)
-    frequency = Parameter(1, 10000, 400)
+    symbol_duration = Parameter(0.001, 0.1, 0.005)
+    frequency = Parameter(1, 10000, 1000)
     rate = Parameter(8000, 44100, 16000)
 
+    filter_type = Parameter(0, 2, 0)
     filter_window_base = Parameter(1, 500, 20)
     filter_window_scale = Parameter(0.0, 1.0, 0.1)
     filter_shape = Parameter(0.5, 1.0, 0.5)
