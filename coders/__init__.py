@@ -123,6 +123,14 @@ def trimmean(a, min_num=1, percent=0.2, strength=0.2):
     return s / weight
 
 
+def sq_lin_trim_mean(a, start=0.5, end=0.1, start_v=0, end_v=0.5):
+    start_w = np.linspace(start_v, 1, start*len(a))
+    end_w = np.linspace(1, end_v, end*len(a))
+    mid_w = np.ones(len(a) - len(start_w) - len(end_w))
+    weights = np.concatenate((start_w, mid_w, end_w))
+    return ((a * weights).sum() / weights.sum()).item()
+
+
 class BitStream(np.ndarray):
 
     def __new__(cls, input_obj, symbolwidth: int=1):
