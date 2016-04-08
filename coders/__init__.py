@@ -207,6 +207,7 @@ class WavStream(np.ndarray):
         yf = 2/d * np.abs(scipy.fftpack.fft(self)[:d/2])
         return xf, yf
 
+    # FFT Filter
     def filter(self, window_size: int, shape: float, std: float) \
             -> 'WavStream':
         window = scipy.signal.general_gaussian(window_size, p=shape, sig=std)
@@ -216,7 +217,15 @@ class WavStream(np.ndarray):
         # TODO: Better rebalancing so it can be used for ASK
         stream_f = ((np.abs(self).mean() / np.abs(stream_f).mean()).item() *
                     stream_f)
-        stream_f = np.roll(stream_f, -window_size//2)
+        stream_f = np.roll(stream_f, -window_size // 2)
+        return stream_f
+
+    # Alen Filter
+    def afilter(self, conv_size: int, conv_scale: int):
+        window = np.ones(conv_size) / conv_scale
+        stream_f = type(self)(scipy.signal.convolve(self, window, mode='same'),
+                              rate=self.rate,
+                              symbol_len=self.symbol_len)
         return stream_f
 
     # TODO: implement frequency search
@@ -225,16 +234,17 @@ class WavStream(np.ndarray):
     # TODO: look at https://gist.github.com/endolith/250860 (alt)
     # TODO: recheck relocate_peak value
     @classmethod
-    def _peaks(cls, stream: np.ndarray, peak_width: Optional[np.ndarray]=None,
-               threshold: float=5.0e-2, ref: List=None,
-               relocate_peak: bool=False) \
+    def _peaks(cls, stream: np.ndarray,
+               peak_width: Optional[np.ndarray] = None,
+               threshold: float = 5.0e-2, ref: List = None,
+               relocate_peak: bool = False) \
             -> List[Union[Tuple[int, float], Tuple[int, float, float]]]:
         # Results list
         peaks = []
         # Prepare some args because binding objects in defaults
         if peak_width is None:
             peak_width = cls.DEFAULT_PEAK_WIDTH
-        pw_pad = peak_width.mean()/2
+        pw_pad = peak_width.mean() / 2
         # TODO: time scipy peaks
         scipy_peaks = scipy.signal.find_peaks_cwt(stream, peak_width)
         for n in scipy_peaks:
