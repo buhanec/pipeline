@@ -531,6 +531,10 @@ class Encoder(object, metaclass=ABCMeta):
     def decode(self, stream: WavStream, filter_stream: bool=True) -> BitStream:
         pass
 
+    def _base(self, stream: BitStream) -> np.ndarray:
+        v_max = self.f * 2 * np.pi * len(stream) * self.symbol_len / self.r
+        return np.linspace(0, v_max, len(stream) * self.symbol_len + 1)[:-1]
+
 
 # TODO: second levels parameter for decoding balance
 class SimpleASK(Encoder):
@@ -546,11 +550,9 @@ class SimpleASK(Encoder):
 
     def encode(self, stream: BitStream) -> WavStream:
         stream = stream.assymbolwidth(self.symbol_width.c)
-        stream_len = len(stream) * self.symbol_len
-        stream_max = (self.f * 2 * np.pi * len(stream) * self.symbol_len /
-                      self.r)
 
-        base = np.linspace(0, stream_max, stream_len)
+        base = self._base(stream)
+
         reshape = (stream * self.step_amp) + self.low_amp
         print('Reshape:', reshape.round(2))
         return WavStream(np.sin(base) * reshape.repeat(self.symbol_len),
@@ -576,6 +578,8 @@ class SimpleASK(Encoder):
         return BitStream(retval, symbolwidth=self.symbol_width.c)
 
 
+
+
 class SimplePSK(Encoder):
 
     zeroes_width = Parameter(0.05, 1.0, 0.2)
@@ -583,11 +587,9 @@ class SimplePSK(Encoder):
 
     def encode(self, stream: BitStream) -> WavStream:
         stream = stream.assymbolwidth(self.symbol_width.c)
-        stream_len = len(stream) * self.symbol_len
-        stream_max = (self.f * 2 * np.pi * len(stream) * self.symbol_len /
-                      self.r)
 
-        base, _ = np.linspace(0, stream_max, stream_len, retstep=True)
+        base = self._base(stream)
+
         shifts = (stream * 2 * np.pi / self.symbol_size)
         print('Shifts:', shifts.round(2))
         return WavStream(np.sin(base - shifts.repeat(self.symbol_len)),
@@ -660,10 +662,9 @@ class SimpleFSK(Encoder):
 
     def encode(self, stream: BitStream) -> WavStream:
         stream = stream.assymbolwidth(self.symbol_width.c)
-        stream_len = len(stream) * self.symbol_len
-        stream_max = 2 * np.pi * len(stream) * self.symbol_len / self.r
 
-        base = np.linspace(0, stream_max, stream_len)
+        base = self._base(stream)
+
         f_map = (stream * self.f_step) + self.f_low
         print('Frequency map:', f_map.round(2))
         return WavStream(np.sin(base * f_map.repeat(self.symbol_len)),
@@ -700,11 +701,9 @@ class SimpleQAM(Encoder):
 
     def encode(self, stream: BitStream) -> WavStream:
         stream = stream.assymbolwidth(self.symbol_width.c)
-        stream_len = len(stream) * self.symbol_len
-        stream_max = (self.f * 2 * np.pi * len(stream) * self.symbol_len /
-                      self.r)
 
-        base, _ = np.linspace(0, stream_max, stream_len, retstep=True)
+        base = self._base(stream)
+
         qam_map = self.polar[stream]
         print('Shifts:', qam_map[:, 1].round(2))
         print('Reshape:', qam_map[:, 0].round(2))
