@@ -538,15 +538,22 @@ class Encoder(object, metaclass=ABCMeta):
 
     # TODO: assess with filter
     def filter(self, stream: WavStream) -> WavStream:
-        return stream.filter(self.filter_window, self.filter_shape.c,
-                             self.filter_std)
+        if self.filter_type.c == 0:
+            return stream
+        elif self.filter_type.c == 1:
+            return stream.filter(self.filter_window, self.filter_shape.c,
+                                 self.filter_std)
+        elif self.filter_type.c == 2:
+            return stream.afilter(self.filter_window, self.filter_window)
 
     @abstractmethod
     def encode(self, stream: BitStream) -> WavStream:
         pass
 
     @abstractmethod
-    def decode(self, stream: WavStream, filter_stream: bool=True) -> BitStream:
+    def decode(self, stream: WavStream, filter_stream: bool=True,
+               retcert: bool=False) \
+            -> Union[BitStream, Tuple[BitStream, List]]:
         pass
 
     def _base(self, stream: BitStream) -> np.ndarray:
@@ -576,7 +583,9 @@ class SimpleASK(Encoder):
         return WavStream(np.sin(base) * reshape.repeat(self.symbol_len),
                          self.r, self.symbol_len)
 
-    def decode(self, stream: WavStream, filter_stream: bool=True) -> BitStream:
+    def decode(self, stream: WavStream, filter_stream: bool = True,
+               retcert: bool = False) \
+            -> Union[BitStream, Tuple[BitStream, List]]:
         symbol_len = rint(stream.rate * self.symbol_duration.c)
         levels, _ = np.linspace(self.low_amp, self.high_amplitude.c,
                                 self.symbol_size, retstep=True)
@@ -585,15 +594,23 @@ class SimpleASK(Encoder):
             stream = self.filter(WavStream(stream, stream.rate, symbol_len))
 
         retval = []
+        certainties = []
         for symbol in stream.symbols():
             peaks = np.array(symbol.peaks(self.peak_range,
                                           self.peak_threshold.c))
             # TODO: repeat peaks and do square distance from levels
             peak = trimmean(np.abs(peaks[:, 1]))
-            value = np.square(levels - peak).argmin()
+            values = np.square(levels - peak)
+            value = values.argmin()
             print('>', value, round(peak, 2))
             retval.append(value)
-        return BitStream(retval, symbolwidth=self.symbol_width.c)
+            certainties.append(values)
+
+            retval = BitStream(retval, symbolwidth=self.symbol_width.c)
+            if retcert:
+                return retval, certainties
+            return retval
+
 
 
 
@@ -613,7 +630,9 @@ class SimplePSK(Encoder):
         return WavStream(np.sin(base - shifts.repeat(self.symbol_len)),
                          self.r, self.symbol_len)
 
-    def decode(self, stream: WavStream, filter_stream: bool=True) -> BitStream:
+    def decode(self, stream: WavStream, filter_stream: bool = True,
+               retcert: bool = False) \
+            -> Union[BitStream, Tuple[BitStream, List]]:
         λ = stream.rate / self.f
         symbol_len = rint(stream.rate * self.symbol_duration.c)
 
@@ -621,6 +640,7 @@ class SimplePSK(Encoder):
             stream = self.filter(WavStream(stream, stream.rate, symbol_len))
 
         retval = []
+        certainties = []
         for s in stream.symbols():
             peaks = np.array(s.peaks(self.peak_range,
                                      self.peak_threshold.c))
@@ -632,8 +652,13 @@ class SimplePSK(Encoder):
                             self.symbol_size)
             value = cyclic_d(peaks_stream, self.symbol_size)
             retval.append(value)
+            certainties.append(0.0)
             print('>', value, peaks_stream.mean().round(2))
-        return BitStream(retval, symbolwidth=self.symbol_width.c)
+
+        retval = BitStream(retval, symbolwidth=self.symbol_width.c)
+        if retcert:
+            return retval, certainties
+        return retval
 
     # TODO: reevaluate with better peaks implementation
     def decode_(self, stream: WavStream) -> BitStream:
@@ -688,7 +713,9 @@ class SimpleFSK(Encoder):
         return WavStream(np.sin(base * f_map.repeat(self.symbol_len)),
                          self.r, self.symbol_len)
 
-    def decode(self, stream: WavStream, filter_stream: bool=True) -> BitStream:
+    def decode(self, stream: WavStream, filter_stream: bool = True,
+               retcert: bool = False) \
+            -> Union[BitStream, Tuple[BitStream, List]]:
         symbol_len = rint(stream.rate * self.symbol_duration.c)
         levels, _ = np.linspace(self.f_low, self.f_high, self.symbol_size,
                                 retstep=True)
@@ -696,14 +723,21 @@ class SimpleFSK(Encoder):
             stream = self.filter(WavStream(stream, stream.rate, symbol_len))
 
         retval = []
+        certainties = []
         for symbol in stream.symbols():
             peaks = np.array(symbol.fft_peaks(self.peak_range,
                                               self.peak_threshold.c))
             peak = np.average(peaks[:, 2], weights=peaks[:, 1])
-            value = np.square(levels - peak).argmin()
+            values = np.square(levels - peak)
+            value = values.argmin()
             print('>', value, peak.round(2))
             retval.append(value)
-        return BitStream(retval, symbolwidth=self.symbol_width.c)
+            certainties.append(values)
+
+        retval = BitStream(retval, symbolwidth=self.symbol_width.c)
+        if retcert:
+            return retval, certainties
+        return retval
 
 
 class SimpleQAM(Encoder):
@@ -729,7 +763,9 @@ class SimpleQAM(Encoder):
                          qam_map[:, 0].repeat(self.symbol_len), self.r,
                          self.symbol_len)
 
-    def decode(self, stream: WavStream, filter_stream: bool=True) -> BitStream:
+    def decode(self, stream: WavStream, filter_stream: bool = True,
+               retcert: bool = False) \
+            -> Union[BitStream, Tuple[BitStream, List]]:
         λ = stream.rate / self.f
         symbol_len = rint(stream.rate * self.symbol_duration.c)
 
@@ -737,6 +773,7 @@ class SimpleQAM(Encoder):
             stream = self.filter(WavStream(stream, stream.rate, symbol_len))
 
         retval = []
+        certainties = []
         for s in stream.symbols():
             peaks = np.array(s.peaks(self.peak_range, self.peak_threshold.c))
             # TODO: squared distance from levels
@@ -755,8 +792,13 @@ class SimpleQAM(Encoder):
             temp2 = temp[:, 0] + temp[:, 1]
             value = temp2.argmin()
             retval.append(value)
+            certainties.append(temp2)
             print('>', value, cartesian.round(2), polar.round(2))
-        return BitStream(retval, symbolwidth=self.symbol_width.c)
+
+        retval = BitStream(retval, symbolwidth=self.symbol_width.c)
+        if retcert:
+            return retval, certainties
+        return retval
 
     # TODO: reevaluate with better peaks implementation
     def decode_(self, stream: WavStream) -> BitStream:
