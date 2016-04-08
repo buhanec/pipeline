@@ -613,7 +613,42 @@ class SimpleASK(Encoder):
             return retval
 
 
+class IntegralASK(SimpleASK):
+    def decode(self, stream: WavStream, filter_stream: bool = True,
+               retcert: bool = False) \
+            -> Union[BitStream, Tuple[BitStream, List]]:
+        symbol_len = rint(stream.rate * self.symbol_duration.c)
+        sums = self._sine_sums()
+        print('Sums:', sums)
 
+        if filter_stream:
+            stream = self.filter(WavStream(stream, stream.rate, symbol_len))
+
+        retval = []
+        certainties = []
+        for symbol in stream.symbols():
+            symbol = symbol  # type: np.ndarray
+            s_value = sq_lin_trim_mean(np.abs(symbol))
+            distance = np.square(sums - s_value)
+            value = distance.argmin()
+            certainty = distance
+            print('>', value, round(s_value, 2), certainty)
+            retval.append(value)
+            certainties.append(distance)
+
+        retval = BitStream(retval, symbolwidth=self.symbol_width.c)
+        if retcert:
+            return retval, certainties
+        return retval
+
+    def _sine_sums(self):
+        retval = []
+        symbol_max = self.f * 2 * np.pi * self.symbol_len / self.r
+        base_symbol = np.linspace(0, symbol_max, self.symbol_len)
+        for n in range(self.symbol_size):
+            retval.append(np.abs(np.sin(base_symbol) *
+                          (n * self.step_amp + self.low_amp)).sum().item())
+        return np.array(retval) / self.symbol_len
 
 
 class SimplePSK(Encoder):
