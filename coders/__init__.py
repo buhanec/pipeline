@@ -885,3 +885,69 @@ class SimpleQAM(Encoder):
             print('>', value, c.round(2))
             retval.append(value)
         return BitStream(retval, symbolwidth=self.symbol_width.c)
+
+
+class ComparisonEncoder(Encoder, metaclass=ABCMeta):
+
+    def _samples(self, stream_len: int):
+        retval = []
+        for v in range(self.symbol_size):
+            stream = BitStream([v] * stream_len,
+                               symbolwidth=self.symbol_width.c)
+            retval.append([s for s in self.encode(stream).symbols()])
+        return np.swapaxes(np.array(retval), 0, 1)
+
+    @abstractmethod
+    def encode(self, stream: BitStream) -> WavStream:
+        pass
+
+    def decode(self, stream: WavStream, filter_stream: bool = True,
+               retcert: bool = False) \
+            -> Union[BitStream, Tuple[BitStream, List]]:
+        symbol_len = rint(stream.rate * self.symbol_duration.c)
+
+        if filter_stream:
+            stream = self.filter(WavStream(stream, stream.rate, symbol_len))
+
+        symbols = [s for s in stream.symbols()]
+        samples = self._samples(len(symbols))
+
+        retval = []
+        certainties = []
+        for i, symbol in enumerate(symbols):
+            values = sq_lin_trim_error(samples[i], symbol,
+                                       start=self.sqe_start.c,
+                                       start_v=self.sqe_start_v.c,
+                                       end=self.sqe_end.c,
+                                       end_v=self.sqe_end_v.c)
+            value = values.argmin()
+            print('>', value, values)
+            retval.append(value)
+            certainties.append(values)
+
+        retval = BitStream(retval, symbolwidth=self.symbol_width.c)
+        if retcert:
+            return retval, certainties
+        return retval
+
+
+class ComparisonASK(ComparisonEncoder):
+
+    high_amplitude = Parameter(0.0, 1.0, 0.9)
+    low_amplitude = Parameter(0.0, 0.9, 0.1)
+
+    def __init__(self):
+        super().__init__()
+        self.low_amp = self.low_amplitude.c * self.high_amplitude.c
+        self.step_amp = ((self.high_amplitude.c * (1 - self.low_amplitude.c)) /
+                         (self.symbol_size - 1))
+
+    def encode(self, stream: BitStream) -> WavStream:
+        stream = stream.assymbolwidth(self.symbol_width.c)
+
+        base = self._base(stream)
+
+        reshape = (stream * self.step_amp) + self.low_amp
+        print('Reshape:', reshape.round(2))
+        return WavStream(np.sin(base) * reshape.repeat(self.symbol_len),
+                         self.r, self.symbol_len)
