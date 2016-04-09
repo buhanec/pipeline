@@ -131,6 +131,14 @@ def sq_lin_trim_mean(a, start=0.5, end=0.1, start_v=0, end_v=0.5):
     return ((a * weights).sum() / weights.sum()).item()
 
 
+def sq_lin_trim_error(ref, a, start=0.5, end=0.1, start_v=0, end_v=0.5):
+    start_w = np.linspace(start_v, 1, start * len(a))
+    end_w = np.linspace(1, end_v, end * len(a))
+    mid_w = np.ones(len(a) - len(start_w) - len(end_w))
+    weights = np.concatenate((start_w, mid_w, end_w))
+    return (np.square(ref - a) * weights).sum(axis=1)
+
+
 class BitStream(np.ndarray):
 
     def __new__(cls, input_obj, symbolwidth: int=1):
@@ -463,6 +471,11 @@ class Encoder(object, metaclass=ABCMeta):
     peak_width_span = Parameter(0.0, 1.0, 0.0)
     peak_threshold = Parameter(0.0, 1.0, 5.0e-3)
 
+    sqe_start = Parameter(0, 0.75, 0.5)
+    sqe_start_v = Parameter(0, 1, 0)
+    sqe_end = Parameter(0, 0.25, 0.1)
+    sqe_end_v = Parameter(0, 1, 0.5)
+
     def __init__(self):
         # Clone parameters
         for p, v in self.parameters.items():
@@ -628,7 +641,11 @@ class IntegralASK(SimpleASK):
         certainties = []
         for symbol in stream.symbols():
             symbol = symbol  # type: np.ndarray
-            s_value = sq_lin_trim_mean(np.abs(symbol))
+            s_value = sq_lin_trim_mean(np.abs(symbol),
+                                       start=self.sqe_start.c,
+                                       start_v=self.sqe_start_v.c,
+                                       end=self.sqe_end.c,
+                                       end_v=self.sqe_end_v.c)
             distance = np.square(sums - s_value)
             value = distance.argmin()
             certainty = distance
