@@ -578,8 +578,8 @@ class Encoder(object, metaclass=ABCMeta):
 # TODO: second levels parameter for decoding balance
 class SimpleASK(Encoder):
 
-    high_amplitude = Parameter(0.0, 1.0, 0.8)
-    low_amplitude = Parameter(0.0, 0.9, 0.25)
+    high_amplitude = Parameter(0.0, 1.0, 0.9)
+    low_amplitude = Parameter(0.0, 0.9, 0.1)
 
     def __init__(self):
         super().__init__()
@@ -620,10 +620,10 @@ class SimpleASK(Encoder):
             retval.append(value)
             certainties.append(values)
 
-            retval = BitStream(retval, symbolwidth=self.symbol_width.c)
-            if retcert:
-                return retval, certainties
-            return retval
+        retval = BitStream(retval, symbolwidth=self.symbol_width.c)
+        if retcert:
+            return retval, certainties
+        return retval
 
 
 class IntegralASK(SimpleASK):
