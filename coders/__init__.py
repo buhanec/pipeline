@@ -114,7 +114,8 @@ def fitness(bit_rate: float, error_rate: float) -> float:
     return bit_rate/error_rate**2
 
 
-def trimmean(a, min_num=1, percent=0.2, strength=0.2):
+def trimmean(a, min_num: int=1, percent: float=0.2, strength: float=0.2) \
+        -> float:
     if len(a) == 1:
         return a[0]
     num = max(min_num, rint(len(a) * percent))
@@ -123,7 +124,8 @@ def trimmean(a, min_num=1, percent=0.2, strength=0.2):
     return s / weight
 
 
-def sq_lin_trim_mean(a, start=0.5, end=0.1, start_v=0, end_v=0.5):
+def sq_lin_trim_mean(a: np.ndarray, start: float=0.5, end: float=0.1,
+                     start_v: float=0, end_v: float=0.5) -> float:
     start_w = np.linspace(start_v, 1, start*len(a))
     end_w = np.linspace(1, end_v, end*len(a))
     mid_w = np.ones(len(a) - len(start_w) - len(end_w))
@@ -131,7 +133,9 @@ def sq_lin_trim_mean(a, start=0.5, end=0.1, start_v=0, end_v=0.5):
     return ((a * weights).sum() / weights.sum()).item()
 
 
-def sq_lin_trim_error(ref, a, start=0.5, end=0.1, start_v=0, end_v=0.5):
+def sq_lin_trim_error(ref: np.ndarray, a: np.ndarray, start: float=0.5,
+                      end: float=0.1, start_v: float=0, end_v: float=0.5) \
+        -> np.ndarray:
     start_w = np.linspace(start_v, 1, start * len(a))
     end_w = np.linspace(1, end_v, end * len(a))
     mid_w = np.ones(len(a) - len(start_w) - len(end_w))
@@ -185,7 +189,8 @@ class BitStream(np.ndarray):
             if self_.symbolwidth != 1:
                 self_ = self_.assymbolwidth(1)
             clip = len(self_) - len(other_)
-            if 0 < clip < self.symbolwidth and all(self_[-clip:] == 0):
+            clipped = self_[-clip:] == 0  # type: np.ndarray
+            if 0 < clip < self.symbolwidth and all(clipped):
                 self_ = self_[:len(other_)]
         return super(BitStream, self_).__eq__(other_)
 
@@ -223,20 +228,21 @@ class WavStream(np.ndarray):
         yf = 2/d * np.abs(scipy.fftpack.fft(self)[:d/2])
         return xf, yf
 
-    # FFT Filter
+    # FFT Convolve Filter
     def filter(self, window_size: int, shape: float, std: float) \
             -> 'WavStream':
         window = scipy.signal.general_gaussian(window_size, p=shape, sig=std)
         stream_f = type(self)(scipy.signal.fftconvolve(window, self),
                               rate=self.rate,
                               symbol_len=self.symbol_len)
-        # TODO: Better rebalancing so it can be used for ASK
-        stream_f = ((np.abs(self).mean() / np.abs(stream_f).mean()).item() *
+        self_ = self  # type: np.ndarray
+        stream_f = stream_f  # type: np.ndarray
+        stream_f = ((np.abs(self_).mean() / np.abs(stream_f).mean()).item() *
                     stream_f)
         stream_f = np.roll(stream_f, -window_size // 2)
         return stream_f
 
-    # Alen Filter
+    # 2D Convolve Filter
     def afilter(self, conv_size: int, conv_scale: int):
         window = np.ones(conv_size) / conv_scale
         stream_f = type(self)(scipy.signal.convolve(self, window, mode='same'),
