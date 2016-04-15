@@ -465,6 +465,7 @@ class Encoder(object, metaclass=ABCMeta):
     symbol_duration = Parameter(0.001, 0.1, 0.005)
     frequency = Parameter(1, 10000, 1000)
     rate = Parameter(8000, 44100, 16000)
+    amplitude = Parameter(0.1, 1, 0.9)
 
     filter_type = Parameter(0, 2, 0)
     filter_window_base = Parameter(1, 500, 20)
@@ -686,8 +687,8 @@ class SimplePSK(Encoder):
 
         shifts = (stream * 2 * np.pi / self.symbol_size)
         print('Shifts:', shifts.round(2))
-        return WavStream(np.sin(base - shifts.repeat(self.symbol_len)),
-                         self.r, self.symbol_len)
+        return WavStream(np.sin(base - shifts.repeat(self.symbol_len)) *
+                         self.amplitude.c, self.r, self.symbol_len)
 
     def decode(self, stream: WavStream, filter_stream: bool = True,
                retcert: bool = False) \
@@ -769,8 +770,8 @@ class SimpleFSK(Encoder):
 
         f_map = (stream * self.f_step) + self.f_low
         print('Frequency map:', f_map.round(2))
-        return WavStream(np.sin(base * f_map.repeat(self.symbol_len)),
-                         self.r, self.symbol_len)
+        return WavStream(np.sin(base * f_map.repeat(self.symbol_len)) *
+                         self.amplitude.c, self.r, self.symbol_len)
 
     def decode(self, stream: WavStream, filter_stream: bool = True,
                retcert: bool = False) \
