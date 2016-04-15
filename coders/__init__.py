@@ -53,7 +53,7 @@ def cyclic_d(values: np.ndarray, lim: int) -> int:
                                     np.square(values))])
     m = np.array([np.minimum(np.square(n - values),
                              np.square(n + values))
-                  for n in np.arange(1, 4)])
+                  for n in np.arange(1, lim)])
     return np.concatenate((lim_case, m), axis=0).mean(axis=1).argmin()
 
 
@@ -141,6 +141,59 @@ def sq_lin_trim_error(ref: np.ndarray, a: np.ndarray, start: float=0.5,
     mid_w = np.ones(len(a) - len(start_w) - len(end_w))
     weights = np.concatenate((start_w, mid_w, end_w))
     return (np.square(ref - a) * weights).sum(axis=1)
+
+
+def  sq_cyclic_align_error(positives: Union[List, np.ndarray],
+                           negatives: Union[List, np.ndarray],
+                           wavelength: Number, lim: int,
+                           start: float=0.5, end: float=0.1,
+                           start_v: float=0.1, end_v: float=0.1,
+                           start_min: int=2, end_min: int=2) -> np.ndarray:
+    l = len(positives) + len(negatives)
+    start_w = np.linspace(start_v, 1, int(start * l) or start_min, endpoint=False)
+    end_w = np.linspace(end_v, 1, int(end * l) or end_min, endpoint=False)[::-1]
+    l2 = l - len(start_w) - len(end_w)
+    if l2 > 0:
+        mid_w = np.ones(l2)
+    elif l2 == 0:
+        mid_w = np.array([])
+    else:
+        mid_w = np.array(start_w[l2:] + end_w[:-l2]) / 2
+        start_w = start_w[:l2]
+        end_w = end_w[-l2:]
+    weights = np.concatenate((start_w, mid_w, end_w))
+
+    p_k = 0
+    n_k = 0
+
+    peaks = []
+    while True:
+        e = False
+        try:
+            p = positives[p_k]
+        except IndexError:
+            p = np.Infinity
+            e = True
+        try:
+            n = negatives[n_k]
+        except IndexError:
+            n = np.Infinity
+            if e:
+                break
+        if p < n:
+            c = p % wavelength / wavelength + 0.75
+            p_k += 1
+        else:
+            c = n % wavelength / wavelength + 0.25
+            n_k += 1
+        peaks.append(c)
+    peaks = (np.array(peaks) % 1 * lim) % lim
+
+    lim_case = [np.minimum(np.square(peaks - lim), np.square(peaks))]
+    m = [np.minimum(np.square(n - peaks), np.square(n + peaks)) for n in np.arange(1, lim)]
+    cases = (np.array(lim_case + m) * weights).sum(axis=1) / weights.sum()
+
+    return np.array(cases)
 
 
 class BitStream(np.ndarray):
@@ -701,19 +754,27 @@ class SimplePSK(Encoder):
 
         retval = []
         certainties = []
-        for s in stream.symbols():
+        for k, s in enumerate(stream.symbols()):
+            shift = λ - (k * symbol_len) % λ
+
             peaks = np.array(s.peaks(self.peak_range,
                                      self.peak_threshold.c))
-            positives = peaks[:, 0][peaks[:, 1] > 0]
-            negatives = peaks[:, 0][peaks[:, 1] < 0]
-            negatives2 = np.array(negatives) % λ / λ + 0.25
-            positives2 = np.array(positives) % λ / λ + 0.75
-            peaks_stream = (np.concatenate((negatives2, positives2)) % 1 *
-                            self.symbol_size)
-            value = cyclic_d(peaks_stream, self.symbol_size)
+
+            # Drop first or last space peaks
+            if peaks[0, 1] == 0:
+                del peaks[0, 1]
+            if peaks[-1, 1] == symbol_len - 1:
+                del peaks[-1]
+
+            positives = peaks[:, 0][peaks[:, 1] > 0] - shift
+            negatives = peaks[:, 0][peaks[:, 1] < 0] - shift
+
+            values = sq_cyclic_align_error(positives, negatives, λ, self.symbol_size)
+            value = values.argmin()
+
             retval.append(value)
-            certainties.append(0.0)
-            print('>', value, peaks_stream.mean().round(2))
+            certainties.append(values)
+            print('>', value, values.round(2))
 
         retval = BitStream(retval, symbolwidth=self.symbol_width.c)
         if retcert:
