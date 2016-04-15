@@ -79,12 +79,14 @@ def sync_padding(coder: 'Encoder', duration: float=0.4) -> 'WavStream':
     transition = rint(duration * 0.15 * coder.r)
     total = rint(duration * coder.r)
 
-    base = np.sin(np.linspace(0, coder.f * 2 * np.pi * duration, total, endpoint=False))
-    transform = np.concatenate((np.zeros(transition),
-                                ease(np.linspace(0, 1, transition, endpoint=False)),
-                                np.ones(total - 4 * transition),
-                                ease(np.linspace(1, 0, transition, endpoint=False)),
-                                np.zeros(transition)))
+    base = np.sin(np.linspace(0, coder.f * 2 * np.pi * duration, total,
+                              endpoint=False))
+    transform = np.concatenate((
+        np.zeros(transition),
+        ease(np.linspace(0, 1, transition, endpoint=False)),
+        np.ones(total - 4 * transition),
+        ease(np.linspace(1, 0, transition, endpoint=False)),
+        np.zeros(transition)))
 
     return WavStream(base * transform, coder.r, total)
 
@@ -143,15 +145,17 @@ def sq_lin_trim_error(ref: np.ndarray, a: np.ndarray, start: float=0.5,
     return (np.square(ref - a) * weights).sum(axis=1)
 
 
-def  sq_cyclic_align_error(positives: Union[List, np.ndarray],
-                           negatives: Union[List, np.ndarray],
-                           wavelength: Number, lim: int,
-                           start: float=0.5, end: float=0.1,
-                           start_v: float=0.1, end_v: float=0.1,
-                           start_min: int=2, end_min: int=2) -> np.ndarray:
+def sq_cyclic_align_error(positives: Union[List, np.ndarray],
+                          negatives: Union[List, np.ndarray],
+                          wavelength: Number, lim: int,
+                          start: float=0.5, end: float=0.1,
+                          start_v: float=0.1, end_v: float=0.1,
+                          start_min: int=2, end_min: int=2) -> np.ndarray:
     l = len(positives) + len(negatives)
-    start_w = np.linspace(start_v, 1, int(start * l) or start_min, endpoint=False)
-    end_w = np.linspace(end_v, 1, int(end * l) or end_min, endpoint=False)[::-1]
+    start_w = np.linspace(start_v, 1, int(start * l) or start_min,
+                          endpoint=False)
+    end_w = np.linspace(end_v, 1, int(end * l) or end_min,
+                        endpoint=False)[::-1]
     l2 = l - len(start_w) - len(end_w)
     if l2 > 0:
         mid_w = np.ones(l2)
@@ -190,7 +194,8 @@ def  sq_cyclic_align_error(positives: Union[List, np.ndarray],
     peaks = (np.array(peaks) % 1 * lim) % lim
 
     lim_case = [np.minimum(np.square(peaks - lim), np.square(peaks))]
-    m = [np.minimum(np.square(n - peaks), np.square(n + peaks)) for n in np.arange(1, lim)]
+    m = [np.minimum(np.square(n - peaks), np.square(n + peaks))
+         for n in np.arange(1, lim)]
     cases = (np.array(lim_case + m) * weights).sum(axis=1) / weights.sum()
 
     return np.array(cases)
@@ -769,7 +774,8 @@ class SimplePSK(Encoder):
             positives = peaks[:, 0][peaks[:, 1] > 0] - shift
             negatives = peaks[:, 0][peaks[:, 1] < 0] - shift
 
-            values = sq_cyclic_align_error(positives, negatives, λ, self.symbol_size)
+            values = sq_cyclic_align_error(positives, negatives, λ,
+                                           self.symbol_size)
             value = values.argmin()
 
             retval.append(value)
