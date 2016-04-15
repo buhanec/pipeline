@@ -79,11 +79,11 @@ def sync_padding(coder: 'Encoder', duration: float=0.4) -> 'WavStream':
     transition = rint(duration * 0.15 * coder.r)
     total = rint(duration * coder.r)
 
-    base = np.sin(np.linspace(0, coder.f * 2 * np.pi * duration, total))
+    base = np.sin(np.linspace(0, coder.f * 2 * np.pi * duration, total, endpoint=False))
     transform = np.concatenate((np.zeros(transition),
-                                ease(np.linspace(0, 1, transition)),
+                                ease(np.linspace(0, 1, transition, endpoint=False)),
                                 np.ones(total - 4 * transition),
-                                ease(np.linspace(1, 0, transition)),
+                                ease(np.linspace(1, 0, transition, endpoint=False)),
                                 np.zeros(transition)))
 
     return WavStream(base * transform, coder.r, total)
@@ -126,8 +126,8 @@ def trimmean(a, min_num: int=1, percent: float=0.2, strength: float=0.2) \
 
 def sq_lin_trim_mean(a: np.ndarray, start: float=0.5, end: float=0.1,
                      start_v: float=0, end_v: float=0.5) -> float:
-    start_w = np.linspace(start_v, 1, start*len(a))
-    end_w = np.linspace(1, end_v, end*len(a))
+    start_w = np.linspace(start_v, 1, start * len(a), endpoint=False)
+    end_w = np.linspace(end_v, 1, end * len(a), endpoint=False)[::-1]
     mid_w = np.ones(len(a) - len(start_w) - len(end_w))
     weights = np.concatenate((start_w, mid_w, end_w))
     return ((a * weights).sum() / weights.sum()).item()
@@ -136,8 +136,8 @@ def sq_lin_trim_mean(a: np.ndarray, start: float=0.5, end: float=0.1,
 def sq_lin_trim_error(ref: np.ndarray, a: np.ndarray, start: float=0.5,
                       end: float=0.1, start_v: float=0, end_v: float=0.5) \
         -> np.ndarray:
-    start_w = np.linspace(start_v, 1, start * len(a))
-    end_w = np.linspace(1, end_v, end * len(a))
+    start_w = np.linspace(start_v, 1, start * len(a), endpoint=False)
+    end_w = np.linspace(end_v, 1, end * len(a), endpoint=False)[::-1]
     mid_w = np.ones(len(a) - len(start_w) - len(end_w))
     weights = np.concatenate((start_w, mid_w, end_w))
     return (np.square(ref - a) * weights).sum(axis=1)
@@ -579,7 +579,7 @@ class Encoder(object, metaclass=ABCMeta):
 
     def _base(self, stream: BitStream) -> np.ndarray:
         v_max = self.f * 2 * np.pi * len(stream) * self.symbol_len / self.r
-        return np.linspace(0, v_max, len(stream) * self.symbol_len + 1)[:-1]
+        return np.linspace(0, v_max, len(stream) * self.symbol_len, endpoint=False)
 
 
 # TODO: second levels parameter for decoding balance
