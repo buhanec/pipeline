@@ -473,17 +473,23 @@ class Encoder(object, metaclass=ABCMeta):
         return np.linspace(0, v_max, len(stream) * self.symbol_len, endpoint=False)
 
 
-# TODO: second levels parameter for decoding balance
 class SimpleASK(Encoder):
 
     high_amplitude = Parameter(0.0, 1.0, 0.9)
     low_amplitude = Parameter(0.0, 0.9, 0.1)
+
+    d_high_amplitude = Parameter(0.0, 1.0, 0.9)
+    d_low_amplitude = Parameter(0.0, 0.9, 0.1)
 
     def __init__(self):
         super().__init__()
         self.low_amp = self.low_amplitude.c * self.high_amplitude.c
         self.step_amp = ((self.high_amplitude.c * (1 - self.low_amplitude.c)) /
                          (self.symbol_size - 1))
+        self.d_low_amp = self.d_low_amplitude.c * self.d_high_amplitude.c
+        self.d_step_amp = ((self.d_high_amplitude.c *
+                            (1 - self.d_low_amplitude.c)) /
+                           (self.symbol_size - 1))
 
     def encode(self, stream: BitStream) -> WavStream:
         stream = stream.assymbolwidth(self.symbol_width.c)
@@ -499,7 +505,7 @@ class SimpleASK(Encoder):
                retcert: bool = False) \
             -> Union[BitStream, Tuple[BitStream, List]]:
         symbol_len = rint(stream.rate * self.symbol_duration.c)
-        levels, _ = np.linspace(self.low_amp, self.high_amplitude.c,
+        levels, _ = np.linspace(self.d_low_amp, self.d_high_amplitude.c,
                                 self.symbol_size, retstep=True)
 
         if filter_stream:
@@ -510,11 +516,9 @@ class SimpleASK(Encoder):
         for symbol in stream.symbols():
             peaks = np.array(symbol.peaks(self.peak_range,
                                           self.peak_threshold.c))
-            # TODO: repeat peaks and do square distance from levels
-            peak = trimmean(np.abs(peaks[:, 1]))
+            peak = trim_mean(np.abs(peaks[:, 1]))
             values = np.square(levels - peak)
             value = values.argmin()
-            print('>', value, round(peak, 2))
             retval.append(value)
             certainties.append(values)
 
@@ -539,11 +543,11 @@ class IntegralASK(SimpleASK):
         certainties = []
         for symbol in stream.symbols():
             symbol = symbol  # type: np.ndarray
-            s_value = sq_lin_trim_mean(np.abs(symbol),
-                                       start=self.sqe_start.c,
-                                       start_v=self.sqe_start_v.c,
-                                       end=self.sqe_end.c,
-                                       end_v=self.sqe_end_v.c)
+            s_value = lin_trim_mean(np.abs(symbol),
+                                    start=self.sqe_start.c,
+                                    start_v=self.sqe_start_v.c,
+                                    end=self.sqe_end.c,
+                                    end_v=self.sqe_end_v.c)
             distance = np.square(sums - s_value)
             value = distance.argmin()
             certainty = distance
@@ -556,13 +560,14 @@ class IntegralASK(SimpleASK):
             return retval, certainties
         return retval
 
-    def _sine_sums(self):
+    def _sine_sums(self, sample_n: int = 100):
         retval = []
         symbol_max = self.f * 2 * np.pi * self.symbol_len / self.r
-        base_symbol = np.linspace(0, symbol_max, self.symbol_len)
+        base_symbol = np.linspace(0, symbol_max * sample_n,
+                                  self.symbol_len * sample_n)
         for n in range(self.symbol_size):
-            retval.append(np.abs(np.sin(base_symbol) *
-                          (n * self.step_amp + self.low_amp)).sum().item())
+            retval.append(np.abs(np.sin(base_symbol) * (n * self.d_step_amp +
+                          self.d_low_amp)).sum().item() / sample_n)
         return np.array(retval) / self.symbol_len
 
 
@@ -581,6 +586,7 @@ class SimplePSK(Encoder):
         return WavStream(np.sin(base - shifts.repeat(self.symbol_len)) *
                          self.amplitude.c, self.r, self.symbol_len)
 
+    # TODO: zeroes reinforcement
     def decode(self, stream: WavStream, filter_stream: bool = True,
                retcert: bool = False) \
             -> Union[BitStream, Tuple[BitStream, List]]:
@@ -619,38 +625,6 @@ class SimplePSK(Encoder):
         if retcert:
             return retval, certainties
         return retval
-
-    # TODO: reevaluate with better peaks implementation
-    def decode_(self, stream: WavStream) -> BitStream:
-        λ = stream.rate / self.f
-        symbol_len = rint(stream.rate * self.symbol_duration.c)
-        stream_len = len(stream)
-        stream = self.filter(WavStream(stream, stream.rate, symbol_len))
-
-        peaks = np.array(stream.peaks(self.peak_range, self.peak_threshold.c))
-        positives = peaks[:, 0][peaks[:, 1] > 0]
-        negatives = peaks[:, 0][peaks[:, 1] < 0]
-        positives2 = val_split(positives, symbol_len, stream_len, size=True)
-        negatives2 = val_split(negatives, symbol_len, stream_len, size=True)
-        negatives_stream = (np.array(negatives2) % λ / λ + 0.25)
-        positives_stream = (np.array(positives2) % λ / λ + 0.75)
-        peaks_stream = (np.array([np.concatenate(s) for s in
-                                  zip(negatives_stream, positives_stream)]) %
-                        1 * self.symbol_size)
-        peaks_stream2 = (np.array([np.concatenate(s) for s in
-                                   zip(negatives_stream, positives_stream)]) %
-                         1 * 2 * np.pi)
-        for p in peaks_stream2:
-            print('>', p.mean().round(2))
-
-        # TODO: zeroes reinforcement
-        # zeroes = stream.zeroes(rint(self.zeroes_width.c * self.λ),
-        #                        self.zeroes_threshold.c)
-        # zeroes = val_split(zeroes, symbol_len, stream_len, size=True)
-
-        return BitStream(list(map(lambda v: cyclic_d(v, self.symbol_size),
-                                  peaks_stream)),
-                         symbolwidth=self.symbol_width.c)
 
 
 class SimpleFSK(Encoder):
@@ -801,11 +775,12 @@ class ComparisonEncoder(Encoder, metaclass=ABCMeta):
         for v in range(self.symbol_size):
             stream = BitStream([v] * stream_len,
                                symbolwidth=self.symbol_width.c)
-            retval.append([s for s in self.encode(stream).symbols()])
+            retval.append([s for s in
+                           self.encode(stream, comparison=True).symbols()])
         return np.swapaxes(np.array(retval), 0, 1)
 
     @abstractmethod
-    def encode(self, stream: BitStream) -> WavStream:
+    def encode(self, stream: BitStream, comparison: bool = False) -> WavStream:
         pass
 
     def decode(self, stream: WavStream, filter_stream: bool = True,
@@ -822,11 +797,11 @@ class ComparisonEncoder(Encoder, metaclass=ABCMeta):
         retval = []
         certainties = []
         for i, symbol in enumerate(symbols):
-            values = sq_lin_trim_error(samples[i], symbol,
-                                       start=self.sqe_start.c,
-                                       start_v=self.sqe_start_v.c,
-                                       end=self.sqe_end.c,
-                                       end_v=self.sqe_end_v.c)
+            values = lin_trim_error(samples[i], symbol,
+                                    start=self.sqe_start.c,
+                                    start_v=self.sqe_start_v.c,
+                                    end=self.sqe_end.c,
+                                    end_v=self.sqe_end_v.c)
             value = values.argmin()
             print('>', value, values)
             retval.append(value)
@@ -843,18 +818,28 @@ class ComparisonASK(ComparisonEncoder):
     high_amplitude = Parameter(0.0, 1.0, 0.9)
     low_amplitude = Parameter(0.0, 0.9, 0.1)
 
+    d_high_amplitude = Parameter(0.0, 1.0, 0.9)
+    d_low_amplitude = Parameter(0.0, 0.9, 0.1)
+
     def __init__(self):
         super().__init__()
         self.low_amp = self.low_amplitude.c * self.high_amplitude.c
         self.step_amp = ((self.high_amplitude.c * (1 - self.low_amplitude.c)) /
                          (self.symbol_size - 1))
+        self.d_low_amp = self.d_low_amplitude.c * self.d_high_amplitude.c
+        self.d_step_amp = ((self.d_high_amplitude.c *
+                            (1 - self.d_low_amplitude.c)) /
+                           (self.symbol_size - 1))
 
-    def encode(self, stream: BitStream) -> WavStream:
+    def encode(self, stream: BitStream, comparison: bool = False) -> WavStream:
         stream = stream.assymbolwidth(self.symbol_width.c)
 
         base = self._base(stream)
 
-        reshape = (stream * self.step_amp) + self.low_amp
+        if not comparison:
+            reshape = (stream * self.step_amp) + self.low_amp
+        else:
+            reshape = (stream * self.d_step_amp) + self.d_low_amp
         print('Reshape:', reshape.round(2))
         return WavStream(np.sin(base) * reshape.repeat(self.symbol_len),
                          self.r, self.symbol_len)
