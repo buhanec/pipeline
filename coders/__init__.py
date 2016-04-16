@@ -1,4 +1,4 @@
-from typing import Union, Tuple, List, Optional, Dict, Any, Iterable
+from typing import Union, Tuple, List, Optional, Dict, Any
 from numbers import Number
 from abc import ABCMeta, abstractmethod
 import numpy as np
@@ -10,9 +10,6 @@ import scipy.stats
 
 from .util import (rint, val_split, c2p, p2c, min_error, lin_trim_mean,
                    lin_trim_error, sq_cyclic_align_error, ease, trim_mean)
-
-
-
 
 
 def sync_padding(coder: 'Encoder', duration: float=0.4) -> 'WavStream':
@@ -29,9 +26,6 @@ def sync_padding(coder: 'Encoder', duration: float=0.4) -> 'WavStream':
         np.zeros(transition)))
 
     return WavStream(base * transform, coder.r, total)
-
-
-
 
 
 class BitStream(np.ndarray):
@@ -448,7 +442,6 @@ class Encoder(object, metaclass=ABCMeta):
             getattr(new, p).set(v.c)
         return new
 
-    # TODO: assess with filter
     def filter(self, stream: WavStream) -> WavStream:
         if self.filter_type.c == 0:
             return stream
@@ -470,7 +463,8 @@ class Encoder(object, metaclass=ABCMeta):
 
     def _base(self, stream: BitStream) -> np.ndarray:
         v_max = self.f * 2 * np.pi * len(stream) * self.symbol_len / self.r
-        return np.linspace(0, v_max, len(stream) * self.symbol_len, endpoint=False)
+        return np.linspace(0, v_max, len(stream) * self.symbol_len,
+                           endpoint=False)
 
 
 class SimpleASK(Encoder):

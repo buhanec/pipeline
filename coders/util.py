@@ -1,11 +1,6 @@
-from typing import Union, Tuple, List, Optional, Dict, Any, Iterable
+from typing import Union, Tuple, List, Optional, Iterable
 from numbers import Number
-from abc import ABCMeta, abstractmethod
 import numpy as np
-import scipy
-import scipy.signal
-import scipy.fftpack
-import scipy.stats
 
 
 def rint(a: Number) -> int:
