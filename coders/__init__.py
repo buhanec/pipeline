@@ -12,7 +12,7 @@ from .util import (rint, val_split, c2p, p2c, min_error, lin_trim_mean,
                    lin_trim_error, sq_cyclic_align_error, ease, trim_mean)
 
 
-def sync_padding(coder: 'Encoder', duration: float=0.4) -> 'WavStream':
+def sync_padding(coder: 'Encoder', duration: float = 0.4) -> 'WavStream':
     transition = rint(duration * 0.15 * coder.r)
     total = rint(duration * coder.r)
 
@@ -30,7 +30,7 @@ def sync_padding(coder: 'Encoder', duration: float=0.4) -> 'WavStream':
 
 class BitStream(np.ndarray):
 
-    def __new__(cls, input_obj, symbolwidth: int=1):
+    def __new__(cls, input_obj, symbolwidth: int = 1):
         obj = np.array(input_obj, dtype=int).view(cls)
         obj.symbolwidth = symbolwidth
         return obj
@@ -167,8 +167,8 @@ class WavStream(np.ndarray):
                     peaks.append((m, stream[m]))
         return peaks
 
-    def fft_peaks(self, peak_width: Optional[np.ndarray]=None,
-                  threshold: float=5.0e-2, axis: bool=False) \
+    def fft_peaks(self, peak_width: Optional[np.ndarray] = None,
+                  threshold: float = 5.0e-2, axis: bool = False) \
             -> List[Tuple[int, float, float]]:
         xf, yf = self.fft()
         if axis:
@@ -176,8 +176,8 @@ class WavStream(np.ndarray):
         return self._peaks(yf, peak_width, threshold, relocate_peak=True,
                            ref=xf)
 
-    def peaks(self, peak_width: Optional[np.ndarray]=None,
-              threshold: float=5.0e-2, relocate_peak: bool=True) \
+    def peaks(self, peak_width: Optional[np.ndarray] = None,
+              threshold: float = 5.0e-2, relocate_peak: bool = True) \
             -> List[Tuple[int, float]]:
         results = (self._peaks(self, peak_width, threshold,
                                relocate_peak=relocate_peak) +
@@ -187,7 +187,8 @@ class WavStream(np.ndarray):
         return results
 
     # TODO: optimize and improve
-    def zeroes(self, zero_width: int=20, threshold: float=0.25) -> List[int]:
+    def zeroes(self, zero_width: int = 20, threshold: float = 0.25) \
+            -> List[int]:
         results = np.where(np.logical_and(self > -threshold,
                                           self < threshold))[0]
         if not len(results):
@@ -421,7 +422,7 @@ class Encoder(object, metaclass=ABCMeta):
     def reinit(self):
         self.__init__()
 
-    def mutate(self, amount: float=1/3, scale: float=1) -> 'Encoder':
+    def mutate(self, amount: float = 1/3, scale: float = 1) -> 'Encoder':
         new = type(self)()
         for p, v in self.parameters.items():
             if amount > np.random.random():
@@ -430,7 +431,7 @@ class Encoder(object, metaclass=ABCMeta):
             getattr(new, p).set(v.c)
         return new
 
-    def cross(self, other: 'Encoder', amount: float=1/3) -> 'Encoder':
+    def cross(self, other: 'Encoder', amount: float = 1/3) -> 'Encoder':
         new = type(self)()
         for p, v in self.parameters.items():
             if amount > np.random.random():
@@ -456,13 +457,16 @@ class Encoder(object, metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def decode(self, stream: WavStream, filter_stream: bool=True,
-               retcert: bool=False) \
+    def decode(self, stream: WavStream, filter_stream: bool = True,
+               retcert: bool = False) \
             -> Union[BitStream, Tuple[BitStream, List]]:
         pass
 
-    def _base(self, stream: BitStream) -> np.ndarray:
-        v_max = self.f * 2 * np.pi * len(stream) * self.symbol_len / self.r
+    def _base(self, stream: BitStream, frequency: bool = True) -> np.ndarray:
+        if frequency:
+            v_max = self.f * 2 * np.pi * len(stream) * self.symbol_len / self.r
+        else:
+            v_max = 2 * np.pi * len(stream) * self.symbol_len / self.r
         return np.linspace(0, v_max, len(stream) * self.symbol_len,
                            endpoint=False)
 
