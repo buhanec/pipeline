@@ -9,7 +9,8 @@ import scipy.stats
 
 
 from .util import (rint, val_split, c2p, p2c, min_error, lin_trim_mean,
-                   lin_trim_error, sq_cyclic_align_error, ease, trim_mean)
+                   lin_trim_error, sq_cyclic_align_error, ease, trim_mean,
+                   infs)
 
 
 def sync_padding(coder: 'Encoder', duration: float = 0.4) -> 'WavStream':
@@ -514,6 +515,13 @@ class SimpleASK(Encoder):
         for symbol in stream.symbols():
             peaks = np.array(symbol.peaks(self.peak_range,
                                           self.peak_threshold.c))
+
+            if len(peaks) == 0:
+                retval.append(0)
+                certainties.append(infs(self.symbol_size))
+                print('> no peaks')
+                continue
+
             peak = trim_mean(np.abs(peaks[:, 1]))
             values = np.square(levels - peak)
             value = values.argmin()
@@ -602,11 +610,23 @@ class SimplePSK(Encoder):
             peaks = np.array(s.peaks(self.peak_range,
                                      self.peak_threshold.c))
 
+            if len(peaks) == 0:
+                retval.append(0)
+                certainties.append(infs(self.symbol_size))
+                print('> no peaks')
+                continue
+
             # Drop first or last space peaks
             if peaks[0, 1] == 0:
                 del peaks[0, 1]
             if peaks[-1, 1] == symbol_len - 1:
                 del peaks[-1]
+
+            if len(peaks) == 0:
+                retval.append(0)
+                certainties.append(infs(self.symbol_size))
+                print('> no peaks')
+                continue
 
             positives = peaks[:, 0][peaks[:, 1] > 0] - shift
             negatives = peaks[:, 0][peaks[:, 1] < 0] - shift
@@ -629,6 +649,8 @@ class SimpleFSK(Encoder):
 
     frequency_dev = Parameter(0.01, 1.0, 0.25)
 
+    peak_threshold = Parameter(0.0, 1.0, 0.15)
+
     def __init__(self):
         super().__init__()
         self.f_low = self.f * (1 - self.frequency_dev.c)
@@ -637,13 +659,23 @@ class SimpleFSK(Encoder):
 
     def encode(self, stream: BitStream) -> WavStream:
         stream = stream.assymbolwidth(self.symbol_width.c)
-
-        base = self._base(stream)
-
         f_map = (stream * self.f_step) + self.f_low
         print('Frequency map:', f_map.round(2))
-        return WavStream(np.sin(base * f_map.repeat(self.symbol_len)) *
-                         self.amplitude.c, self.r, self.symbol_len)
+
+        base = []
+        symbol_base = np.linspace(0, 2 * np.pi * self.symbol_len / self.r,
+                                  self.symbol_len, endpoint=False)
+        symbol_base = symbol_base  # type: np.ndarray
+        shift = 0
+        for f in f_map:
+            λ = self.r / f
+            base.append(symbol_base * f + shift * 2 * np.pi)
+            shift += (self.symbol_len % λ) / λ
+
+        base = np.concatenate(base)
+
+        return WavStream(np.sin(base) * self.amplitude.c, self.r,
+                         self.symbol_len)
 
     def decode(self, stream: WavStream, filter_stream: bool = True,
                retcert: bool = False) \
@@ -659,10 +691,59 @@ class SimpleFSK(Encoder):
         for symbol in stream.symbols():
             peaks = np.array(symbol.fft_peaks(self.peak_range,
                                               self.peak_threshold.c))
+
+            if len(peaks) == 0:
+                retval.append(0)
+                certainties.append(infs(self.symbol_size))
+                print('> no peaks')
+                continue
+
             peak = np.average(peaks[:, 2], weights=peaks[:, 1])
             values = np.square(levels - peak)
             value = values.argmin()
             print('>', value, peak.round(2))
+            retval.append(value)
+            certainties.append(values)
+
+        retval = BitStream(retval, symbolwidth=self.symbol_width.c)
+        if retcert:
+            return retval, certainties
+        return retval
+
+
+class SimpleFSK2(SimpleFSK):
+
+    def decode(self, stream: WavStream, filter_stream: bool = True,
+               retcert: bool = False) \
+            -> Union[BitStream, Tuple[BitStream, List]]:
+        symbol_len = rint(stream.rate * self.symbol_duration.c)
+        levels, _ = np.linspace(self.f_low, self.f_high, self.symbol_size,
+                                retstep=True)
+        peak_dist_ref = np.divide(self.r, levels) / 2
+
+        if filter_stream:
+            stream = self.filter(WavStream(stream, stream.rate, symbol_len))
+
+        retval = []
+        certainties = []
+        for symbol in stream.symbols():
+            peaks = np.array(symbol.peaks(self.peak_range,
+                                          self.peak_threshold.c))
+
+            if len(peaks) == 0:
+                retval.append(0)
+                certainties.append(infs(self.symbol_size))
+                print('> no peaks')
+                continue
+
+            peaks_dist = peaks[:, 0][1:] - peaks[:, 0][:-1]  # type: np.ndarray
+            peaks_result = np.array([np.mod(d, peak_dist_ref)
+                                     for d in peaks_dist])
+            peaks_result2 = np.minimum(peak_dist_ref - peaks_result,
+                                       peaks_result)
+            values = peaks_result2.sum(axis=0)
+            value = values.argmin()
+            print('>', value, values.round(2))
             retval.append(value)
             certainties.append(values)
 
