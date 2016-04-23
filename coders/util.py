@@ -173,3 +173,7 @@ def trim_mean(a, min_num: int = 1, percent: float = 0.2,
     weight = len(a) - 2 * num * (1 - strength)
     s = sum(a[:num]) * strength + sum(a[num:-num]) + sum(a[-num:]) * strength
     return s / weight
+
+
+def infs(n: int) -> np.ndarray:
+    return np.ones(n) * np.inf
