@@ -47,7 +47,7 @@ def c2p(v: Union[Tuple, List, np.ndarray]) -> np.ndarray:
         v = np.array(v)
     if len(v.shape) == 1:
         v = np.array([v])
-    return np.array([np.sqrt(np.square(v).sum(axis=1)) / np.sqrt(2),
+    return np.array([np.sqrt(np.square(v).sum(axis=1)),
                      np.arctan2(v[:, 1], v[:, 0]) % (2*np.pi)]).T
 
 
@@ -56,8 +56,7 @@ def p2c(v: Union[Tuple, List, np.ndarray]) -> np.ndarray:
         v = np.array(v)
     if len(v.shape) == 1:
         v = np.array([v])
-    return (np.array([np.cos(v[:, 1]),
-                      np.sin(v[:, 1])]) * v[:, 0] * np.sqrt(2)).T
+    return (np.array([np.cos(v[:, 1]), np.sin(v[:, 1])]) * v[:, 0]).T
 
 
 def cyclic_d(values: np.ndarray, lim: int) -> int:
@@ -177,3 +176,41 @@ def trim_mean(a, min_num: int = 1, percent: float = 0.2,
 
 def infs(n: int) -> np.ndarray:
     return np.ones(n) * np.inf
+
+
+def smooth5(size: int) -> int:
+    """
+    Find smallest 5-smooth number equal to or larger than size.
+
+    Based on SciPy implementation.
+
+    :param size: starting value
+    :return: 5-smooth number
+    """
+    if size < 6:
+        return size
+    if not size % 2:
+        return size
+
+    new = np.inf
+    power5 = 1
+    while power5 < size:
+        power35 = power5
+        while power35 < size:
+            power2 = 2 ** ((-int(-size // power35) - 1).bit_length())
+            n = power2 * power35
+            if n == size:
+                return new
+            elif n < new:
+                new = n
+            power35 *= 3
+            if power35 == size:
+                return new
+        if power35 < new:
+            new = power35
+        power5 *= 5
+        if power5 == size:
+            return new
+    if power5 < new:
+        new = power5
+    return new
