@@ -10,7 +10,7 @@ import scipy.stats
 
 from .util import (rint, val_split, c2p, p2c, min_error, lin_trim_mean,
                    lin_trim_error, sq_cyclic_align_error, ease, trim_mean,
-                   infs)
+                   infs, smooth5)
 
 
 def sync_padding(coder: 'Encoder', duration: float = 0.4) -> 'WavStream':
@@ -526,7 +526,7 @@ class Encoder(object, metaclass=ABCMeta):
                            endpoint=False)
 
 
-class SimpleASK(Encoder):
+class FeatureASK(Encoder):
 
     high_amplitude = Parameter(0.0, 1.0, 0.9)
     low_amplitude = Parameter(0.0, 0.9, 0.1)
@@ -556,7 +556,7 @@ class SimpleASK(Encoder):
 
     def decode(self, stream: WavStream, filter_stream: bool = True,
                retcert: bool = False) \
-            -> Union[BitStream, Tuple[BitStream, List]]:
+            -> Union[BitStream, Tuple[BitStream, List[float]]]:
         symbol_len = rint(stream.rate * self.symbol_duration.c)
         levels, _ = np.linspace(self.d_low_amp, self.d_high_amplitude.c,
                                 self.symbol_size, retstep=True)
@@ -588,10 +588,10 @@ class SimpleASK(Encoder):
         return retval
 
 
-class IntegralASK(SimpleASK):
+class FeatureIntegralASK(FeatureASK):
     def decode(self, stream: WavStream, filter_stream: bool = True,
                retcert: bool = False) \
-            -> Union[BitStream, Tuple[BitStream, List]]:
+            -> Union[BitStream, Tuple[BitStream, List[float]]]:
         symbol_len = rint(stream.rate * self.symbol_duration.c)
         sums = self._sine_sums()
         print('Sums:', sums)
@@ -631,7 +631,7 @@ class IntegralASK(SimpleASK):
         return np.array(retval) / self.symbol_len
 
 
-class SimplePSK(Encoder):
+class FeaturePSK(Encoder):
 
     zeroes_width = Parameter(0.05, 1.0, 0.2)
     zeroes_threshold = Parameter(0.0, 1.0, 0.25)
@@ -646,10 +646,9 @@ class SimplePSK(Encoder):
         return WavStream(np.sin(base - shifts.repeat(self.symbol_len)) *
                          self.amplitude.c, self.r, self.symbol_len)
 
-    # TODO: zeroes reinforcement
     def decode(self, stream: WavStream, filter_stream: bool = True,
                retcert: bool = False) \
-            -> Union[BitStream, Tuple[BitStream, List]]:
+            -> Union[BitStream, Tuple[BitStream, List[float]]]:
         λ = stream.rate / self.f
         symbol_len = rint(stream.rate * self.symbol_duration.c)
 
@@ -699,7 +698,7 @@ class SimplePSK(Encoder):
         return retval
 
 
-class SimpleFSK(Encoder):
+class FeatureFSK(Encoder):
 
     frequency_dev = Parameter(0.01, 1.0, 0.25)
 
@@ -733,7 +732,7 @@ class SimpleFSK(Encoder):
 
     def decode(self, stream: WavStream, filter_stream: bool = True,
                retcert: bool = False) \
-            -> Union[BitStream, Tuple[BitStream, List]]:
+            -> Union[BitStream, Tuple[BitStream, List[float]]]:
         symbol_len = rint(stream.rate * self.symbol_duration.c)
         levels, _ = np.linspace(self.f_low, self.f_high, self.symbol_size,
                                 retstep=True)
@@ -765,11 +764,11 @@ class SimpleFSK(Encoder):
         return retval
 
 
-class SimpleFSK2(SimpleFSK):
+class FeatureFSK2(FeatureFSK):
 
     def decode(self, stream: WavStream, filter_stream: bool = True,
                retcert: bool = False) \
-            -> Union[BitStream, Tuple[BitStream, List]]:
+            -> Union[BitStream, Tuple[BitStream, List[float]]]:
         symbol_len = rint(stream.rate * self.symbol_duration.c)
         levels, _ = np.linspace(self.f_low, self.f_high, self.symbol_size,
                                 retstep=True)
@@ -791,6 +790,13 @@ class SimpleFSK2(SimpleFSK):
                 continue
 
             peaks_dist = peaks[:, 0][1:] - peaks[:, 0][:-1]  # type: np.ndarray
+
+            if len(peaks_dist) == 0:
+                retval.append(0)
+                certainties.append(infs(self.symbol_size))
+                print('> no peaks')
+                continue
+
             peaks_result = np.array([np.mod(d, peak_dist_ref)
                                      for d in peaks_dist])
             peaks_result2 = np.minimum(peak_dist_ref - peaks_result,
