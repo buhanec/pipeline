@@ -114,46 +114,91 @@ class WavStream(np.ndarray):
         yf = 2/d * np.abs(scipy.fftpack.fft(self)[:d/2])
         return xf, yf
 
-    # FFT Convolve Filter
     def filter(self, window_size: int, shape: float, std: float) \
             -> 'WavStream':
-        window = scipy.signal.general_gaussian(window_size, p=shape, sig=std)
-        stream_f = type(self)(scipy.signal.fftconvolve(window, self),
-                              rate=self.rate,
-                              symbol_len=self.symbol_len)
+        """
+        Convolve stream with a Gaussian window to filter out noise and
+        distortions. Uses FFT to speed up processing on large arrays.
+
+        :param window_size: Gaussian window size
+        :param shape: Gaussian window shape
+        :param std: Gaussian window standard deviation
+        :return: Filtered stream
+        """
+        kernel = scipy.signal.general_gaussian(window_size, p=shape, sig=std)
         self_ = self  # type: np.ndarray
+
+        shape = len(self) + window_size - 1
+        fft_shape = (smooth5(shape),)
+        fft_self = np.fft.rfftn(self_, fft_shape)
+        fft_kernel = np.fft.rfftn(kernel, fft_shape)
+        start = (window_size - 1) // 2
+        fft_slice = slice(start, len(self) + start)
+        ifft_ret = np.fft.irfftn(fft_self * fft_kernel, fft_shape)[fft_slice]
+
+        stream_f = type(self)(ifft_ret, rate=self.rate,
+                              symbol_len=self.symbol_len)
         stream_f = stream_f  # type: np.ndarray
         stream_f = ((np.abs(self_).mean() / np.abs(stream_f).mean()).item() *
                     stream_f)
-        stream_f = np.roll(stream_f, -window_size // 2)
         return stream_f
 
-    # 2D Convolve Filter
-    def afilter(self, conv_size: int, conv_scale: int):
-        window = np.ones(conv_size) / conv_scale
-        stream_f = type(self)(scipy.signal.convolve(self, window, mode='same'),
+    def filter2(self, conv_size: int, conv_scale: int) -> 'WavStream':
+        """
+        Convolve stream with a rectangular window to filter out noise
+        and distortions.
+
+        :param conv_size: window size
+        :param conv_scale: window scale
+        :return: Filtered stream
+        """
+        kernel = np.ones(conv_size) / conv_scale
+        stream_f = type(self)(np.convolve(self, kernel, mode='same'),
                               rate=self.rate,
                               symbol_len=self.symbol_len)
         return stream_f
 
-    # TODO: implement frequency search
-    # TODO: better search for peak, fit to sine
-    # TODO: counter outliers
-    # TODO: look at https://gist.github.com/endolith/250860 (alt)
-    # TODO: recheck relocate_peak value
+    def filter3(self, window_size: int, shape: float, std: float) \
+            -> 'WavStream':
+        """
+        Convolve stream with a Gaussian window to filter out noise and
+        distortions.
+
+        :param window_size: Gaussian window size
+        :param shape: Gaussian window shape
+        :param std: Gaussian window standard deviation
+        :return: Filtered stream
+        """
+        kernel = scipy.signal.general_gaussian(window_size, p=shape, sig=std)
+        stream_f = type(self)(np.convolve(self, kernel, mode='same'),
+                              rate=self.rate,
+                              symbol_len=self.symbol_len)
+        stream_f = stream_f  # type: np.ndarray
+        self_ = self  # type: np.ndarray
+        stream_f = ((np.abs(self_).mean() / np.abs(stream_f).mean()).item() *
+                    stream_f)
+        return stream_f
+
     @classmethod
     def _peaks(cls, stream: np.ndarray,
                peak_width: Optional[np.ndarray] = None,
                threshold: float = 5.0e-2, ref: List = None,
                relocate_peak: bool = False) \
             -> List[Union[Tuple[int, float], Tuple[int, float, float]]]:
-        # Results list
+        """
+        Find peaks in NumPy array.
+
+        :param stream: array to search for peaks in
+        :param peak_width: peak widths
+        :param threshold: lower threshold for peaks
+        :param ref: reference values for peaks
+        :param relocate_peak: relocate peak to local min or max
+        :return: found peaks
+        """
         peaks = []
-        # Prepare some args because binding objects in defaults
         if peak_width is None:
             peak_width = cls.DEFAULT_PEAK_WIDTH
         pw_pad = peak_width.mean() / 2
-        # TODO: time scipy peaks
         scipy_peaks = scipy.signal.find_peaks_cwt(stream, peak_width)
         for n in scipy_peaks:
             if relocate_peak:
@@ -187,9 +232,15 @@ class WavStream(np.ndarray):
         results.sort(key=lambda v: v[0])
         return results
 
-    # TODO: optimize and improve
     def zeroes(self, zero_width: int = 20, threshold: float = 0.25) \
             -> List[int]:
+        """
+        Find zeros in WavStream.
+
+        :param zero_width: zero searching width
+        :param threshold: zero threshold
+        :return: list of zeros
+        """
         results = np.where(np.logical_and(self > -threshold,
                                           self < threshold))[0]
         if not len(results):
@@ -354,10 +405,10 @@ class Encoder(object, metaclass=ABCMeta):
     rate = Parameter(8000, 44100, 16000)
     amplitude = Parameter(0.1, 1, 0.9)
 
-    filter_type = Parameter(0, 2, 0)
+    filter_type = Parameter(0, 3, 0)
     filter_window_base = Parameter(1, 500, 20)
     filter_window_scale = Parameter(0.0, 1.0, 0.1)
-    filter_shape = Parameter(0.5, 1.0, 0.5)
+    filter_shape = Parameter(0, 1.0, 0.5)
     filter_std_base = Parameter(1, 250, 10)
     filter_std_scale = Parameter(0.0, 0.5, 0.05)
 
@@ -451,7 +502,10 @@ class Encoder(object, metaclass=ABCMeta):
             return stream.filter(self.filter_window, self.filter_shape.c,
                                  self.filter_std)
         elif self.filter_type.c == 2:
-            return stream.afilter(self.filter_window, self.filter_window)
+            return stream.filter2(self.filter_window, self.filter_window)
+        elif self.filter_type.c == 3:
+            return stream.filter3(self.filter_window, self.filter_shape.c,
+                                  self.filter_std)
 
     @abstractmethod
     def encode(self, stream: BitStream) -> WavStream:
@@ -460,7 +514,7 @@ class Encoder(object, metaclass=ABCMeta):
     @abstractmethod
     def decode(self, stream: WavStream, filter_stream: bool = True,
                retcert: bool = False) \
-            -> Union[BitStream, Tuple[BitStream, List]]:
+            -> Union[BitStream, Tuple[BitStream, List[float]]]:
         pass
 
     def _base(self, stream: BitStream, frequency: bool = True) -> np.ndarray:
