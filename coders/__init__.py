@@ -585,16 +585,16 @@ class Encoder(Individual, metaclass=ABCMeta):
     """Base encoder and decoder object."""
 
     symbol_width = Parameter(1, 3, 2)
-    symbol_duration = Parameter(0.001, 0.1, 0.005)
-    frequency = Parameter(1, 10000, 1000)
-    rate = Parameter(8000, 44100, 16000)
+    symbol_duration = Parameter(0.0001, 0.002, 0.001)
+    frequency = Parameter(400, 4000, 2700)
+    rate = Parameter(96000, 96000, 96000)
     amplitude = Parameter(0.1, 1, 0.9)
 
-    filter_type = Parameter(0, 3, 0)
-    filter_window_base = Parameter(1, 500, 20)
+    filter_type = Parameter(0, 3, 1)
+    filter_window_base = Parameter(1, 50, 15)
     filter_window_scale = Parameter(0.0, 1.0, 0.1)
     filter_shape = Parameter(0, 1.0, 0.5)
-    filter_std_base = Parameter(1, 250, 10)
+    filter_std_base = Parameter(1, 25, 8)
     filter_std_scale = Parameter(0.0, 0.5, 0.05)
 
     peak_width_start = Parameter(0.0, 1.0, 0.4)
@@ -602,9 +602,9 @@ class Encoder(Individual, metaclass=ABCMeta):
     peak_threshold = Parameter(0.0, 1.0, 5.0e-3)
 
     sqe_start = Parameter(0, 0.75, 0.5)
-    sqe_start_v = Parameter(0, 1, 0)
+    sqe_start_v = Parameter(0, 1, 0.1)
     sqe_end = Parameter(0, 0.25, 0.1)
-    sqe_end_v = Parameter(0, 1, 0.5)
+    sqe_end_v = Parameter(0, 1, 0.2)
 
     def __init__(self):
         """Initialise object."""
