@@ -1,14 +1,32 @@
+"""Project utility module."""
+
 from typing import Union, Tuple, List, Optional, Iterable
 from numbers import Number
 import numpy as np
 
 
 def rint(a: Number) -> int:
+    """
+    Round a number and return as int.
+
+    :param a: number
+    :return: rounded int
+    """
     return np.round(a).astype(int)
 
 
 def val_split(a: Iterable, partitions: int, range_max: int, range_min: int = 0,
               size: bool = True) -> List[np.ndarray]:
+    """
+    Split `a` into partitions. Unused in final code.
+
+    :param a: source to split
+    :param partitions: number of partitions
+    :param range_max: range max
+    :param range_min: range min
+    :param size: if `True` use `range_max` as size rather than range
+    :return: partitioned array
+    """
     if size:
         n = int(np.ceil(range_max / partitions))
         splits = partitions
@@ -43,6 +61,12 @@ def val_split(a: Iterable, partitions: int, range_max: int, range_min: int = 0,
 
 
 def c2p(v: Union[Tuple, List, np.ndarray]) -> np.ndarray:
+    """
+    Convert Cartesian to polar coordinates.
+
+    :param v: single coordinate or list of coordinates
+    :return: converted coordinate or coordinates
+    """
     if not isinstance(v, np.ndarray):
         v = np.array(v)
     if len(v.shape) == 1:
@@ -52,6 +76,12 @@ def c2p(v: Union[Tuple, List, np.ndarray]) -> np.ndarray:
 
 
 def p2c(v: Union[Tuple, List, np.ndarray]) -> np.ndarray:
+    """
+    Convert polar to Cartesian coordinates.
+
+    :param v: single coordinate or list of coordinates
+    :return: converted coordinate or coordinates
+    """
     if not isinstance(v, np.ndarray):
         v = np.array(v)
     if len(v.shape) == 1:
@@ -59,22 +89,32 @@ def p2c(v: Union[Tuple, List, np.ndarray]) -> np.ndarray:
     return (np.array([np.cos(v[:, 1]), np.sin(v[:, 1])]) * v[:, 0]).T
 
 
-def cyclic_d(values: np.ndarray, lim: int) -> int:
-    values %= lim
-    lim_case = np.array([np.minimum(np.square(values - lim),
-                                    np.square(values))])
-    m = np.array([np.minimum(np.square(n - values),
-                             np.square(n + values))
-                  for n in np.arange(1, lim)])
-    return np.concatenate((lim_case, m), axis=0).mean(axis=1).argmin()
-
-
 def sq_error(a: Union[Number, np.ndarray], b: Union[Number, np.ndarray]):
+    """
+    Get squared error.
+
+    :param a: value or values
+    :param b: value or values
+    :return: error or errors
+    """
     return np.square(a - b).sum().item()
 
 
 def min_error(a: np.ndarray, b: np.ndarray, shift: int,
               l: Optional[int] = None, w: int = 0) -> int:
+    """
+    Find shift between two arrays.
+
+    Best shift is based on the smallest RMS error when comparing shifts
+    between `a` and `b`.
+
+    :param a: array to compare
+    :param b: array to compare
+    :param shift: maximum shift
+    :param l: length to compare
+    :param w: starting offset of comparison
+    :return: best shift found
+    """
     if l is None:
         l = len(a)
     shifts = np.arange(-shift, shift)
@@ -86,6 +126,19 @@ def min_error(a: np.ndarray, b: np.ndarray, shift: int,
 
 def lin_trim_mean(a: np.ndarray, start: float = 0.5, end: float = 0.1,
                   start_v: float = 0, end_v: float = 0.5) -> float:
+    """
+    Calculate mean of array.
+
+    Scaling used to apply lower weights the start and end of the array.
+    Weights are calculated linearly from the edges.
+
+    :param a: input
+    :param start: amount of inputs to scale at the start
+    :param end: amount of inputs to scale at the end
+    :param start_v: starting scale value at the start
+    :param end_v: starting scale value at the end
+    :return: trimmed weighted mean
+    """
     start_w = np.linspace(start_v, 1, start * len(a), endpoint=False)
     end_w = np.linspace(end_v, 1, end * len(a), endpoint=False)[::-1]
     mid_w = np.ones(len(a) - len(start_w) - len(end_w))
@@ -93,14 +146,28 @@ def lin_trim_mean(a: np.ndarray, start: float = 0.5, end: float = 0.1,
     return ((a * weights).sum() / weights.sum()).item()
 
 
-def lin_trim_error(ref: np.ndarray, a: np.ndarray, start: float = 0.5,
-                   end: float = 0.1, start_v: float = 0, end_v: float = 0.5) \
-        -> np.ndarray:
-    start_w = np.linspace(start_v, 1, start * len(a), endpoint=False)
-    end_w = np.linspace(end_v, 1, end * len(a), endpoint=False)[::-1]
-    mid_w = np.ones(len(a) - len(start_w) - len(end_w))
+def lin_trim_error(a: np.ndarray, b: np.ndarray, start: float = 0.5,
+                   end: float = 0.1, start_v: float = 0,
+                   end_v: float = 0.5) -> np.ndarray:
+    """
+    Calculate squared error between two arrays.
+
+    Scaling used to apply lower weights the start and end of the array.
+    Weights are calculated linearly from the edges.
+
+    :param a: reference array
+    :param b: second array
+    :param start: amount of inputs to scale at the start
+    :param end: amount of inputs to scale at the end
+    :param start_v: starting scale value at the start
+    :param end_v: starting scale value at the end
+    :return: squared error
+    """
+    start_w = np.linspace(start_v, 1, start * len(b), endpoint=False)
+    end_w = np.linspace(end_v, 1, end * len(b), endpoint=False)[::-1]
+    mid_w = np.ones(len(b) - len(start_w) - len(end_w))
     weights = np.concatenate((start_w, mid_w, end_w))
-    return (np.square(ref - a) * weights).sum(axis=1)
+    return (np.square(a - b) * weights).sum(axis=1)
 
 
 def sq_cyclic_align_error(positives: Union[List, np.ndarray],
@@ -109,6 +176,24 @@ def sq_cyclic_align_error(positives: Union[List, np.ndarray],
                           start: float = 0.5, end: float = 0.1,
                           start_v: float = 0.1, end_v: float = 0.1,
                           start_min: int = 2, end_min: int = 2) -> np.ndarray:
+    """
+    Determine weights corresponding to all possible shifts.
+
+    Scaling used to apply lower weights the start and end of the array.
+    Weights are calculated linearly from the edges.
+
+    :param positives: positive peaks
+    :param negatives: negative peaks
+    :param wavelength: wavelength of the sine wave
+    :param lim: number of possible shifts
+    :param start: amount of inputs to scale at the start
+    :param end: amount of inputs to scale at the end
+    :param start_v: starting scale value at the start
+    :param end_v: starting scale value at the end
+    :param start_min: minimum number of scaled samples at the start
+    :param end_min: minimum number of scaled samples at the end
+    :return: weights corresponding to alignment probabilities
+    """
     l = len(positives) + len(negatives)
     start_w = np.linspace(start_v, 1, int(start * l) or start_min,
                           endpoint=False)
@@ -161,11 +246,29 @@ def sq_cyclic_align_error(positives: Union[List, np.ndarray],
 
 def ease(x: Union[Number, np.ndarray], a: Number = 2) \
         -> Union[Number, np.ndarray]:
+    """
+    Function used to create easing pattern for synchronisation.
+
+    :param x: input or inputs
+    :param a: easing parameter
+    :return: value or values for given `x`
+    """
     return x ** a / (x ** a + (1 - x) ** a)
 
 
-def trim_mean(a, min_num: int = 1, percent: float = 0.2,
+def trim_mean(a: np.ndarray, min_num: int = 1, percent: float = 0.2,
               strength: float = 0.2) -> float:
+    """
+    Simpler version of `lin_trim_mean`.
+
+    Provides option to set minimum number of trimmed samples.
+
+    :param a: array to trim
+    :param min_num: minimum number to trim
+    :param percent: trim amount
+    :param strength: trim strength
+    :return: trimmed mean
+    """
     if len(a) == 1:
         return a[0]
     num = max(min_num, rint(len(a) * percent))
@@ -175,6 +278,12 @@ def trim_mean(a, min_num: int = 1, percent: float = 0.2,
 
 
 def infs(n: int) -> np.ndarray:
+    """
+    Create NumPy array of `inf`.
+
+    :param n: number of elements
+    :return: `n` `inf` element array
+    """
     return np.ones(n) * np.inf
 
 
