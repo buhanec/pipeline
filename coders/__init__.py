@@ -955,24 +955,22 @@ class FeatureQAM(Encoder):
         return retval
 
 
-class ComparisonEncoder(Encoder, metaclass=ABCMeta):
+class RMSEncoder(Encoder, metaclass=ABCMeta):
 
     def _samples(self, stream_len: int):
         retval = []
         for v in range(self.symbol_size):
             stream = BitStream([v] * stream_len,
                                symbolwidth=self.symbol_width.c)
-            retval.append([s for s in
-                           self.encode(stream, comparison=True).symbols()])
+            retval.append([s for s in self._encode(stream).symbols()])
         return np.swapaxes(np.array(retval), 0, 1)
 
-    @abstractmethod
-    def encode(self, stream: BitStream, comparison: bool = False) -> WavStream:
-        pass
+    def _encode(self, stream: BitStream) -> WavStream:
+        return self.encode(stream)
 
     def decode(self, stream: WavStream, filter_stream: bool = True,
                retcert: bool = False) \
-            -> Union[BitStream, Tuple[BitStream, List]]:
+            -> Union[BitStream, Tuple[BitStream, List[float]]]:
         symbol_len = rint(stream.rate * self.symbol_duration.c)
 
         if filter_stream:
@@ -1000,33 +998,34 @@ class ComparisonEncoder(Encoder, metaclass=ABCMeta):
         return retval
 
 
-class ComparisonASK(ComparisonEncoder):
+class RMSASK(RMSEncoder, FeatureASK):
 
-    high_amplitude = Parameter(0.0, 1.0, 0.9)
-    low_amplitude = Parameter(0.0, 0.9, 0.1)
-
-    d_high_amplitude = Parameter(0.0, 1.0, 0.9)
-    d_low_amplitude = Parameter(0.0, 0.9, 0.1)
-
-    def __init__(self):
-        super().__init__()
-        self.low_amp = self.low_amplitude.c * self.high_amplitude.c
-        self.step_amp = ((self.high_amplitude.c * (1 - self.low_amplitude.c)) /
-                         (self.symbol_size - 1))
-        self.d_low_amp = self.d_low_amplitude.c * self.d_high_amplitude.c
-        self.d_step_amp = ((self.d_high_amplitude.c *
-                            (1 - self.d_low_amplitude.c)) /
-                           (self.symbol_size - 1))
-
-    def encode(self, stream: BitStream, comparison: bool = False) -> WavStream:
+    def _encode(self, stream: BitStream) -> WavStream:
         stream = stream.assymbolwidth(self.symbol_width.c)
 
         base = self._base(stream)
 
-        if not comparison:
-            reshape = (stream * self.step_amp) + self.low_amp
-        else:
-            reshape = (stream * self.d_step_amp) + self.d_low_amp
+        reshape = (stream * self.d_step_amp) + self.d_low_amp
         print('Reshape:', reshape.round(2))
         return WavStream(np.sin(base) * reshape.repeat(self.symbol_len),
                          self.r, self.symbol_len)
+
+
+class RMSPSK(RMSEncoder, FeaturePSK):
+
+    pass
+
+
+class RMSQAM(RMSEncoder, FeatureQAM):
+
+    def _encode(self, stream: BitStream) -> WavStream:
+        stream = stream.assymbolwidth(self.symbol_width.c)
+
+        base = self._base(stream)
+
+        qam_map = self.polar_[stream]
+        print('Shifts:', qam_map[:, 1].round(2))
+        print('Reshape:', qam_map[:, 0].round(2))
+        return WavStream(np.sin(base - qam_map[:, 1].repeat(self.symbol_len)) *
+                         qam_map[:, 0].repeat(self.symbol_len), self.r,
+                         self.symbol_len)
