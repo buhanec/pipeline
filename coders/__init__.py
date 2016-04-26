@@ -594,7 +594,7 @@ class Encoder(Individual, metaclass=ABCMeta):
     filter_window_base = Parameter(1, 50, 15)
     filter_window_scale = Parameter(0.0, 1.0, 0.1)
     filter_shape = Parameter(0, 1.0, 0.5)
-    filter_std_base = Parameter(1, 25, 8)
+    filter_std_base = Parameter(1, 40, 8)
     filter_std_scale = Parameter(0.0, 0.5, 0.05)
 
     peak_width_start = Parameter(0.0, 1.0, 0.4)
@@ -664,6 +664,7 @@ class Encoder(Individual, metaclass=ABCMeta):
         new = cls()
         for p, v in new.parameters.items():
             setattr(new, p, v.random())
+        new.reinit()
         return new
 
     def reinit(self):
@@ -683,6 +684,7 @@ class Encoder(Individual, metaclass=ABCMeta):
             if amount > np.random.random():
                 v = v.mutate(scale)
             getattr(new, p).set(v.c)
+        new.reinit()
         return new
 
     def cross(self, other: 'Encoder', amount: float = 1/3) -> 'Encoder':
@@ -700,6 +702,7 @@ class Encoder(Individual, metaclass=ABCMeta):
             elif np.random.randint(2):
                 v = getattr(other, p)
             getattr(new, p).set(v.c)
+        new.reinit()
         return new
 
     def filter(self, stream: WavStream) -> WavStream:
