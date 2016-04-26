@@ -277,6 +277,17 @@ def trim_mean(a: np.ndarray, min_num: int = 1, percent: float = 0.2,
     return s / weight
 
 
+def add_noise(a: np.ndarray, noise: float) -> np.ndarray:
+    """
+    Add noise to array.
+
+    :param a: source array
+    :param noise: noise strength
+    :return: noisy array
+    """
+    return np.clip(a + np.random.normal(0, noise, len(a)), -1, 1)
+
+
 def infs(n: int) -> np.ndarray:
     """
     Create NumPy array of `inf`.
