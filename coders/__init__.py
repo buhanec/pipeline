@@ -420,6 +420,20 @@ class Parameter(Individual):
         else:
             self.scale = abs(self.start - self.stop) / 3
 
+    def _copy(self, value) -> 'Parameter':
+        """
+        Copy parameter with a new value.
+
+        :param value: new value
+        :return: parameter copy
+        """
+        return type(self)(self.start, self.stop, value,
+                          scale=self.scale,
+                          log=self.log,
+                          shift=self.shift,
+                          poly=self.poly,
+                          forced_type=self.type)
+
     def _random(self) -> float:
         """
         Get random valid parameter value.
@@ -428,7 +442,7 @@ class Parameter(Individual):
         """
         if self.log:
             r = np.log(self.stop) - np.log(self.start)
-            x = np.e**(np.random.random() * r + np.log(self.start))
+            x = np.e ** (np.random.random() * r + np.log(self.start))
         else:
             r = self.stop - self.start
             x = np.random.random() * r + self.start
@@ -444,9 +458,7 @@ class Parameter(Individual):
 
         :return: randomised parameter
         """
-        return type(self)(self.start, self.stop, self._random(),
-                          scale=self.scale, log=self.log,
-                          forced_type=self.type)
+        return self._copy(self._random())
 
     def _mutate(self, scale: float = 1) -> float:
         """
@@ -455,13 +467,15 @@ class Parameter(Individual):
         :param scale: mutation scale
         :return: random value
         """
-        c = (self._current + self.shift) ** (1/self.poly)
-        s = (self.scale * scale) ** (1/self.poly)
+        if not self.scale:
+            return self._current
+        c = (self._current + self.shift) ** (1 / self.poly)
+        s = (self.scale * scale) ** (1 / self.poly)
         if self.log:
             v = np.random.lognormal(mean=np.log(c), sigma=np.log(s))
         else:
             v = np.random.normal(loc=c, scale=s)
-        return (v - self.shift)**self.poly
+        return (v - self.shift) ** self.poly
 
     def mutate(self, amount: float = 1, scale: float = 1) -> 'Parameter':
         """
@@ -477,11 +491,10 @@ class Parameter(Individual):
             while not self.start <= v <= self.stop:
                 v = self._mutate(scale)
         else:
-            v = self.current
+            v = self._current
 
         # Create a new object
-        return type(self)(self.start, self.stop, v, scale=self.scale,
-                          log=self.log, forced_type=self.type)
+        return self._copy(v)
 
     def cross(self, other: 'Parameter', amount: float = 1) \
             -> 'Parameter':
@@ -500,6 +513,8 @@ class Parameter(Individual):
         if c < o:
             c, o = o, c
         s = max((c - o) * amount / 3, self.scale / 4)
+        if not s:
+            return self.copy()
         mid = (o + c) / 2
         v = np.random.normal(loc=mid, scale=s)
         while not self.start <= v <= self.stop:
@@ -508,8 +523,7 @@ class Parameter(Individual):
             v = np.e ** v
 
         # Create a new object
-        return type(self)(self.start, self.stop, v, scale=self.scale,
-                          log=self.log, forced_type=self.type)
+        return self._copy(v)
 
     def set(self, value: Union[int, float]) -> Union[int, float]:
         """
@@ -527,9 +541,7 @@ class Parameter(Individual):
 
         :return: copied object
         """
-        return type(self)(self.start, self.stop, self._current,
-                          scale=self.scale, log=self.log,
-                          forced_type=self.type)
+        return self._copy(self._current)
 
     @property
     def current(self) -> Union[int, float]:
