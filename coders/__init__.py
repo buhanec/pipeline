@@ -633,9 +633,6 @@ class FeatureIntegralASK(FeatureASK):
 
 class FeaturePSK(Encoder):
 
-    zeroes_width = Parameter(0.05, 1.0, 0.2)
-    zeroes_threshold = Parameter(0.0, 1.0, 0.25)
-
     def encode(self, stream: BitStream) -> WavStream:
         stream = stream.assymbolwidth(self.symbol_width.c)
 
@@ -716,9 +713,9 @@ class FeatureFSK(Encoder):
         print('Frequency map:', f_map.round(2))
 
         base = []
-        symbol_base = np.linspace(0, 2 * np.pi * self.symbol_len / self.r,
-                                  self.symbol_len, endpoint=False)
-        symbol_base = symbol_base  # type: np.ndarray
+        symbol_base, _ = np.linspace(0, 2 * np.pi * self.symbol_len / self.r,
+                                     self.symbol_len, endpoint=False,
+                                     retstep=True)
         shift = 0
         for f in f_map:
             λ = self.r / f
@@ -872,39 +869,6 @@ class SimpleQAM(Encoder):
         if retcert:
             return retval, certainties
         return retval
-
-    # TODO: reevaluate with better peaks implementation
-    def decode_(self, stream: WavStream) -> BitStream:
-        λ = stream.rate / self.f
-        symbol_len = rint(stream.rate * self.symbol_duration.c)
-        stream_len = len(stream)
-        stream = self.filter(WavStream(stream, stream.rate, symbol_len))
-
-        peaks = np.array(stream.peaks(self.peak_range, self.peak_threshold.c))
-        amp = val_split(np.abs(peaks), symbol_len, stream_len, size=True)
-        amp2 = [v[:, 1].mean() for v in amp]
-        positives = peaks[:, 0][peaks[:, 1] > 0]
-        negatives = peaks[:, 0][peaks[:, 1] < 0]
-        positives2 = val_split(positives, symbol_len, stream_len, size=True)
-        negatives2 = val_split(negatives, symbol_len, stream_len, size=True)
-        negatives_stream = (np.array(negatives2) % λ / λ + 0.25)
-        positives_stream = (np.array(positives2) % λ / λ + 0.75)
-        peaks_stream = (np.array([np.concatenate(s) for s in
-                                 zip(negatives_stream, positives_stream)]) %
-                        1 * 2 * np.pi)
-        bad_mean = np.array([v.mean() for v in peaks_stream])
-
-        polar = np.array(list(zip(amp2, bad_mean)))
-        cartesian = p2c(polar)
-
-        retval = []
-        for c in cartesian:
-            temp = np.square(self.cartesian - c)
-            temp2 = temp[:, 0] + temp[:, 1]
-            value = temp2.argmin()
-            print('>', value, c.round(2))
-            retval.append(value)
-        return BitStream(retval, symbolwidth=self.symbol_width.c)
 
 
 class ComparisonEncoder(Encoder, metaclass=ABCMeta):
