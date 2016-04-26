@@ -67,7 +67,7 @@ class BitStream(np.ndarray):
         return type(src)([int(''.join(s), 2) for s in new],
                          symbolwidth=symbolwidth)
 
-    def __eq__(self, other: Any) -> Union[bool, List[bool]]:
+    def __and__(self, other: Any) -> Union[bool, List[bool]]:
         self_ = self
         other_ = other
         if isinstance(other_, BitStream):
