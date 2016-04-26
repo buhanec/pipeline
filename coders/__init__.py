@@ -616,21 +616,16 @@ class Encoder(Individual, metaclass=ABCMeta):
         self.symbol_size = 2**self.symbol_width.c
         self.f = self.frequency.c
         self.r = self.rate.c
-        print('Main vars:', self.f, self.r, self.symbol_width.c,
-              self.symbol_duration.c)
 
         # Secondary vars
         self.λ = self.r / self.f
         self.symbol_len = rint(self.r * self.symbol_duration.c)
-        print('Secondary vars:', round(self.λ), self.symbol_len)
 
         # Filter vars
         self.filter_window = rint(self.filter_window_base.c +
                                   self.filter_window_scale.c * self.λ)
         self.filter_std = rint(self.filter_std_base.c +
                                self.filter_std_scale.c * self.λ)
-        print('Filter vars:', self.filter_window, self.filter_shape.c,
-              self.filter_std)
 
         # Peak vars
         p_start = max(1, rint(self.peak_width_start.c * self.λ))
@@ -638,7 +633,6 @@ class Encoder(Individual, metaclass=ABCMeta):
         p_range = np.arange(p_start, p_start + p_span)
         p_num = max(1, len(p_range) // 5)
         self.peak_range = p_range[::p_num]
-        print('Peak vars:', self.peak_range, self.peak_threshold.c)
 
     def __repr__(self) -> str:
         """
@@ -687,7 +681,6 @@ class Encoder(Individual, metaclass=ABCMeta):
         new = type(self)()
         for p, v in self.parameters.items():
             if amount > np.random.random():
-                print('mutating', p)
                 v = v.mutate(scale)
             getattr(new, p).set(v.c)
         return new
@@ -703,10 +696,8 @@ class Encoder(Individual, metaclass=ABCMeta):
         new = type(self)()
         for p, v in self.parameters.items():
             if amount > np.random.random():
-                print('crossing', p)
                 v = v.cross(getattr(other, p))
             elif np.random.randint(2):
-                print('stealing', p)
                 v = getattr(other, p)
             getattr(new, p).set(v.c)
         return new
@@ -801,7 +792,6 @@ class FeatureASK(Encoder):
         base = self._base(stream)
 
         reshape = (stream * self.step_amp) + self.low_amp
-        print('Reshape:', reshape.round(2))
         return WavStream(np.sin(base) * reshape.repeat(self.symbol_len),
                          self.r, self.symbol_len)
 
@@ -832,7 +822,6 @@ class FeatureASK(Encoder):
             if len(peaks) == 0:
                 retval.append(0)
                 certainties.append(infs(self.symbol_size))
-                print('> no peaks')
                 continue
 
             peak = trim_mean(np.abs(peaks[:, 1]))
@@ -863,7 +852,6 @@ class FeatureIntegralASK(FeatureASK):
         """
         symbol_len = rint(stream.rate * self.symbol_duration.c)
         sums = self._sine_sums()
-        print('Sums:', sums)
 
         if filter_stream:
             stream = self.filter(WavStream(stream, stream.rate, symbol_len))
@@ -877,12 +865,10 @@ class FeatureIntegralASK(FeatureASK):
                                     start_v=self.sqe_start_v.c,
                                     end=self.sqe_end.c,
                                     end_v=self.sqe_end_v.c)
-            distance = np.square(sums - s_value)
-            value = distance.argmin()
-            certainty = distance
-            print('>', value, round(s_value, 2), certainty)
+            values = np.square(sums - s_value)
+            value = values.argmin()
             retval.append(value)
-            certainties.append(distance)
+            certainties.append(values)
 
         retval = BitStream(retval, symbolwidth=self.symbol_width.c)
         if retcert:
@@ -921,7 +907,6 @@ class FeaturePSK(Encoder):
         base = self._base(stream)
 
         shifts = (stream * 2 * np.pi / self.symbol_size)
-        print('Shifts:', shifts.round(2))
         return WavStream(np.sin(base - shifts.repeat(self.symbol_len)) *
                          self.amplitude.c, self.r, self.symbol_len)
 
@@ -953,7 +938,6 @@ class FeaturePSK(Encoder):
             if len(peaks) == 0:
                 retval.append(0)
                 certainties.append(infs(self.symbol_size))
-                print('> no peaks')
                 continue
 
             # Drop first or last space peaks
@@ -965,7 +949,6 @@ class FeaturePSK(Encoder):
             if len(peaks) == 0:
                 retval.append(0)
                 certainties.append(infs(self.symbol_size))
-                print('> no peaks')
                 continue
 
             positives = peaks[:, 0][peaks[:, 1] > 0] - shift
@@ -981,7 +964,6 @@ class FeaturePSK(Encoder):
 
             retval.append(value)
             certainties.append(values)
-            print('>', value, values.round(2))
 
         retval = BitStream(retval, symbolwidth=self.symbol_width.c)
         if retcert:
@@ -1012,7 +994,6 @@ class FeatureFSK(Encoder):
         """
         stream = stream.assymbolwidth(self.symbol_width.c)
         f_map = (stream * self.f_step) + self.f_low
-        print('Frequency map:', f_map.round(2))
 
         base = []
         symbol_base, _ = np.linspace(0, 2 * np.pi * self.symbol_len / self.r,
@@ -1055,13 +1036,11 @@ class FeatureFSK(Encoder):
             if len(peaks) == 0:
                 retval.append(0)
                 certainties.append(infs(self.symbol_size))
-                print('> no peaks')
                 continue
 
             peak = np.average(peaks[:, 2], weights=peaks[:, 1])
             values = np.square(levels - peak)
             value = values.argmin()
-            print('>', value, peak.round(2))
             retval.append(value)
             certainties.append(values)
 
@@ -1102,7 +1081,6 @@ class FeatureFSK2(FeatureFSK):
             if len(peaks) == 0:
                 retval.append(0)
                 certainties.append(infs(self.symbol_size))
-                print('> no peaks')
                 continue
 
             peaks_dist = peaks[:, 0][1:] - peaks[:, 0][:-1]  # type: np.ndarray
@@ -1110,7 +1088,6 @@ class FeatureFSK2(FeatureFSK):
             if len(peaks_dist) == 0:
                 retval.append(0)
                 certainties.append(infs(self.symbol_size))
-                print('> no peaks')
                 continue
 
             peaks_result = np.array([np.mod(d, peak_dist_ref)
@@ -1119,7 +1096,6 @@ class FeatureFSK2(FeatureFSK):
                                        peaks_result)
             values = peaks_result2.sum(axis=0)
             value = values.argmin()
-            print('>', value, values.round(2))
             retval.append(value)
             certainties.append(values)
 
@@ -1187,9 +1163,6 @@ class FeatureQAM(Encoder):
         self.cartesian = p2c(self.polar)
         self.cartesian_ = p2c(self.polar_[:self.symbol_size])
 
-        print('Polar:\n{}'.format(self.polar.round(2)))
-        print('Cartesian:\n{}'.format(self.cartesian.round(2)))
-
     def encode(self, stream: BitStream) -> WavStream:
         """
         Encode binary data.
@@ -1202,8 +1175,6 @@ class FeatureQAM(Encoder):
         base = self._base(stream)
 
         qam_map = self.polar[stream]
-        print('Shifts:', qam_map[:, 1].round(2))
-        print('Reshape:', qam_map[:, 0].round(2))
         return WavStream(np.sin(base - qam_map[:, 1].repeat(self.symbol_len)) *
                          qam_map[:, 0].repeat(self.symbol_len), self.r,
                          self.symbol_len)
@@ -1235,7 +1206,6 @@ class FeatureQAM(Encoder):
             if len(peaks) == 0:
                 retval.append(0)
                 certainties.append(infs(self.symbol_size))
-                print('> no peaks')
                 continue
 
             amp = trim_mean(np.abs(peaks[:, 1]))
@@ -1249,7 +1219,6 @@ class FeatureQAM(Encoder):
             if len(peaks) == 0:
                 retval.append(0)
                 certainties.append(infs(self.symbol_size))
-                print('> no peaks')
                 continue
 
             positives = peaks[:, 0][peaks[:, 1] > 0] - shift
@@ -1263,8 +1232,6 @@ class FeatureQAM(Encoder):
                                            end_v=self.sqe_end_v.c)
             shift = (shifts.argmin() * self.shift_step /
                      self.d_symbol_shifts_scale.c)
-
-            print(amp, shift / (2 * np.pi))
 
             polar = np.array([amp, shift])
             cartesian = p2c(polar)
@@ -1285,8 +1252,6 @@ class FeatureQAM(Encoder):
                 value = values.argmin()
             retval.append(value)
             certainties.append(values)
-            print('>', k, value, polar)
-            print('Peaks:', peaks[:, 0])
 
         retval = BitStream(retval, symbolwidth=self.symbol_width.c)
         if retcert:
@@ -1348,7 +1313,6 @@ class RMSEncoder(Encoder, metaclass=ABCMeta):
                                     end=self.sqe_end.c,
                                     end_v=self.sqe_end_v.c)
             value = values.argmin()
-            print('>', value, values)
             retval.append(value)
             certainties.append(values)
 
@@ -1373,7 +1337,6 @@ class RMSASK(RMSEncoder, FeatureASK):
         base = self._base(stream)
 
         reshape = (stream * self.d_step_amp) + self.d_low_amp
-        print('Reshape:', reshape.round(2))
         return WavStream(np.sin(base) * reshape.repeat(self.symbol_len),
                          self.r, self.symbol_len)
 
@@ -1399,8 +1362,6 @@ class RMSQAM(RMSEncoder, FeatureQAM):
         base = self._base(stream)
 
         qam_map = self.polar_[stream]
-        print('Shifts:', qam_map[:, 1].round(2))
-        print('Reshape:', qam_map[:, 0].round(2))
         return WavStream(np.sin(base - qam_map[:, 1].repeat(self.symbol_len)) *
                          qam_map[:, 0].repeat(self.symbol_len), self.r,
                          self.symbol_len)
