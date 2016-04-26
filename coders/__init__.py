@@ -1,3 +1,5 @@
+"""Project core module."""
+
 from typing import Union, Tuple, List, Optional, Dict, Any
 from numbers import Number
 from abc import ABCMeta, abstractmethod
@@ -7,13 +9,20 @@ import scipy.signal
 import scipy.fftpack
 import scipy.stats
 
-
-from .util import (rint, val_split, c2p, p2c, min_error, lin_trim_mean,
-                   lin_trim_error, sq_cyclic_align_error, ease, trim_mean,
-                   infs, smooth5)
+from .util import (rint, c2p, p2c, min_error, lin_trim_mean,
+                   lin_trim_error, sq_cyclic_align_error, ease,
+                   trim_mean, infs, smooth5)
+from .ga import Individual
 
 
 def sync_padding(coder: 'Encoder', duration: float = 0.4) -> 'WavStream':
+    """
+    Create synchronisation pattern for a specific waveform.
+
+    :param coder: coder used to generate waveform
+    :param duration: synchronisation duration
+    :return: synchronisation waveform
+    """
     transition = rint(duration * 0.15 * coder.r)
     total = rint(duration * coder.r)
 
@@ -30,18 +39,36 @@ def sync_padding(coder: 'Encoder', duration: float = 0.4) -> 'WavStream':
 
 
 class BitStream(np.ndarray):
+    """Represents a stream of data in a base of a power of 2."""
 
-    def __new__(cls, input_obj, symbolwidth: int = 1):
+    def __new__(cls, input_obj, symbolwidth: int = 1) -> np.ndarray:
+        """
+        Create new object.
+
+        :param input_obj: input values
+        :param symbolwidth: symbol width
+        :return: array with input values
+        """
         obj = np.array(input_obj, dtype=int).view(cls)
         obj.symbolwidth = symbolwidth
         return obj
 
     def __array_finalize__(self, obj):
+        """
+        Finalise array creation.
+
+        :param obj: object to finalise
+        """
         if obj is None:
             return
         self.symbolwidth = getattr(obj, 'symbolwidth', None)
 
     def __repr__(self) -> str:
+        """
+        Get object representation.
+
+        :return: representation
+        """
         if self.symbolwidth > 1:
             source = super().__repr__().splitlines()
             extra = ', symbolwidth={}'.format(self.symbolwidth)
@@ -54,6 +81,15 @@ class BitStream(np.ndarray):
         return super().__repr__()
 
     def assymbolwidth(self, symbolwidth: int) -> 'BitStream':
+        """
+        Convert `BitStream` to a different base.
+
+        Symbol width represents the binary width of the symbol. The
+        final `BitStream` base is `2 ** symbolwidth`.
+
+        :param symbolwidth: symbol width
+        :return: `BitSream` with new base
+        """
         if self.symbolwidth != 1:
             src = BitStream(list(''.join(map(
                     lambda n: bin(n)[2:].zfill(self.symbolwidth), self))))
@@ -68,6 +104,12 @@ class BitStream(np.ndarray):
                          symbolwidth=symbolwidth)
 
     def __and__(self, other: Any) -> Union[bool, List[bool]]:
+        """
+        Compare original binary representation of two `BitStream`s.
+
+        :param other: `BitStream` object to compare to
+        :return: comparison result
+        """
         self_ = self
         other_ = other
         if isinstance(other_, BitStream):
@@ -78,33 +120,62 @@ class BitStream(np.ndarray):
             clipped = self_[-clip:] == 0  # type: np.ndarray
             if 0 < clip < self.symbolwidth and all(clipped):
                 self_ = self_[:len(other_)]
-        return super(BitStream, self_).__eq__(other_)
+        return super(BitStream, self_).__and__(other_)
 
-    def __len__(self):
+    def __len__(self) -> int:
+        """
+        Object length.
+
+        :return: length
+        """
         return super().__len__()
 
 
 class WavStream(np.ndarray):
+    """Represents a waveform."""
 
     DEFAULT_PEAK_WIDTH = np.arange(20, 21)
 
     def __new__(cls, input_obj, rate: int, symbol_len: int):
+        """
+        Create new object.
+
+        :param input_obj: input values
+        :param rate: waveform rate
+        :param symbol_len: waveform symbol len
+        :return: array with input values
+        """
         obj = np.asarray(input_obj, dtype=float).view(cls)
         obj.rate = rate
         obj.symbol_len = symbol_len
         return obj
 
     def __array_finalize__(self, obj):
+        """
+        Finalise array creation.
+
+        :param obj: object to finalise
+        """
         if obj is None:
             return
         self.rate = getattr(obj, 'rate', None)
         self.symbol_len = getattr(obj, 'symbol_len', None)
 
     def symbols(self) -> Tuple['WavStream']:
+        """
+        Split waveform into symbols.
+
+        :return: symbols
+        """
         return (self[self.symbol_len * n:self.symbol_len * (n + 1)]
                 for n in range(rint(len(self) / self.symbol_len)))
 
     def fft(self) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Perform FFT on waveform.
+
+        :return: result
+        """
         d = len(self)
         src = self
         while src.rate is None:
@@ -117,8 +188,9 @@ class WavStream(np.ndarray):
     def filter(self, window_size: int, shape: float, std: float) \
             -> 'WavStream':
         """
-        Convolve stream with a Gaussian window to filter out noise and
-        distortions. Uses FFT to speed up processing on large arrays.
+        Convolve stream with a Gaussian window to filter out noise.
+
+        Uses FFT to speed up processing on large arrays.
 
         :param window_size: Gaussian window size
         :param shape: Gaussian window shape
@@ -145,8 +217,7 @@ class WavStream(np.ndarray):
 
     def filter2(self, conv_size: int, conv_scale: int) -> 'WavStream':
         """
-        Convolve stream with a rectangular window to filter out noise
-        and distortions.
+        Convolve stream with a rectangular window to filter out noise.
 
         :param conv_size: window size
         :param conv_scale: window scale
@@ -161,8 +232,7 @@ class WavStream(np.ndarray):
     def filter3(self, window_size: int, shape: float, std: float) \
             -> 'WavStream':
         """
-        Convolve stream with a Gaussian window to filter out noise and
-        distortions.
+        Convolve stream with a Gaussian window to filter out noise.
 
         :param window_size: Gaussian window size
         :param shape: Gaussian window shape
@@ -215,7 +285,16 @@ class WavStream(np.ndarray):
 
     def fft_peaks(self, peak_width: Optional[np.ndarray] = None,
                   threshold: float = 5.0e-2, axis: bool = False) \
-            -> List[Tuple[int, float, float]]:
+            -> Union[Tuple[np.ndarray, np.ndarray],
+                     List[Tuple[int, float, float]]]:
+        """
+        Calculate FFT and use peak detection to find FFT peaks.
+
+        :param peak_width: peak widths
+        :param threshold: lower threshold for peaks
+        :param axis: if `True` return FFT data
+        :return: FFT data or FFT peaks
+        """
         xf, yf = self.fft()
         if axis:
             return xf, yf
@@ -225,6 +304,14 @@ class WavStream(np.ndarray):
     def peaks(self, peak_width: Optional[np.ndarray] = None,
               threshold: float = 5.0e-2, relocate_peak: bool = True) \
             -> List[Tuple[int, float]]:
+        """
+        Find peaks in waveform.
+
+        :param peak_width: peak widths
+        :param threshold: lower threshold for peaks
+        :param relocate_peak: relocate peak to local maxima or minima
+        :return: peak data
+        """
         results = (self._peaks(self, peak_width, threshold,
                                relocate_peak=relocate_peak) +
                    list(map(lambda v: (v[0], -v[1]),
@@ -265,20 +352,45 @@ class WavStream(np.ndarray):
 
     @property
     def duration(self) -> float:
+        """
+        Return waveform duration..
+
+        :return: duration
+        """
         return len(self) / self.rate
 
-    def __len__(self):
+    def __len__(self) -> int:
+        """
+        Return waveform length.
+
+        :return: length
+        """
         return super().__len__()
 
 
-class Parameter(object):
+class Parameter(Individual):
+    """Encoder parameter object."""
 
     def __init__(self, start: Union[int, float],
                  stop: Union[int, float, None]=None,
                  default: Union[int, float, None]=None,
-                 scale: Union[int, float, None]=None, log: bool=False,
-                 shift: Union[int, float]=0, poly: Union[int, float]=1,
+                 scale: Union[int, float, None]=None,
+                 log: bool=False,
+                 shift: Union[int, float]=0,
+                 poly: Union[int, float]=1,
                  forced_type: Optional[type]=None):
+        """
+        Initialise parameter.
+
+        :param start: start value
+        :param stop: stop value
+        :param default: default value
+        :param scale: scale
+        :param log: log scale
+        :param shift: shift
+        :param poly: polynomial scale
+        :param forced_type: force type
+        """
         self.start = start
         self.stop = stop or start
         if self.start > self.stop:
@@ -309,6 +421,11 @@ class Parameter(object):
             self.scale = abs(self.start - self.stop) / 3
 
     def _random(self) -> float:
+        """
+        Get random valid parameter value.
+
+        :return: random value
+        """
         if self.log:
             r = np.log(self.stop) - np.log(self.start)
             x = np.e**(np.random.random() * r + np.log(self.start))
@@ -322,11 +439,22 @@ class Parameter(object):
         return x
 
     def random(self) -> 'Parameter':
+        """
+        Randomise parameter.
+
+        :return: randomised parameter
+        """
         return type(self)(self.start, self.stop, self._random(),
                           scale=self.scale, log=self.log,
                           forced_type=self.type)
 
-    def _mutate(self, scale: float=1) -> float:
+    def _mutate(self, scale: float = 1) -> float:
+        """
+        Get random mutated parameter value.
+
+        :param scale: mutation scale
+        :return: random value
+        """
         c = (self._current + self.shift) ** (1/self.poly)
         s = (self.scale * scale) ** (1/self.poly)
         if self.log:
@@ -335,56 +463,100 @@ class Parameter(object):
             v = np.random.normal(loc=c, scale=s)
         return (v - self.shift)**self.poly
 
-    def mutate(self, scale: float=1) -> 'Parameter':
+    def mutate(self, amount: float = 1, scale: float = 1) -> 'Parameter':
+        """
+        Get random mutated parameter.
+
+        :param amount: mutation amount
+        :param scale: mutation scale
+        :return: random mutated parameter
+        """
         # Get value within bounds
-        v = self._mutate(scale)
-        while not self.start <= v <= self.stop:
+        if amount > 0:
             v = self._mutate(scale)
+            while not self.start <= v <= self.stop:
+                v = self._mutate(scale)
+        else:
+            v = self.current
 
         # Create a new object
         return type(self)(self.start, self.stop, v, scale=self.scale,
                           log=self.log, forced_type=self.type)
 
-    def cross(self, other: 'Parameter', strength: float=1) \
+    def cross(self, other: 'Parameter', amount: float = 1) \
             -> 'Parameter':
-        c = (self._current + self.shift) ** (1/self.poly)
-        o = (other._current + self.shift) ** (1/self.poly)
+        """
+        Cross-mutate two parameters.
+
+        :param other: parameter to mutate with
+        :param amount: crossing strength
+        :return: crossed parameter
+        """
+        c = (self._current + self.shift) ** (1 / self.poly)
+        o = (other._current + self.shift) ** (1 / self.poly)
         if self.log:
             c = np.log(c)
             o = np.log(o)
         if c < o:
             c, o = o, c
-        s = max((c - o)*strength/3, self.scale/4)
-        v = np.random.normal(loc=(o+c)/2, scale=s)
+        s = max((c - o) * amount / 3, self.scale / 4)
+        mid = (o + c) / 2
+        v = np.random.normal(loc=mid, scale=s)
         while not self.start <= v <= self.stop:
-            v = np.random.normal(loc=(o+c)/2, scale=s)
+            v = np.random.normal(loc=mid, scale=s)
         if self.log:
-            v = np.e**v
+            v = np.e ** v
 
         # Create a new object
         return type(self)(self.start, self.stop, v, scale=self.scale,
                           log=self.log, forced_type=self.type)
 
     def set(self, value: Union[int, float]) -> Union[int, float]:
+        """
+        Set parameter value.
+
+        :param value: value to set
+        :return: new value
+        """
         self._current = value
         return self.current
 
     def copy(self) -> 'Parameter':
+        """
+        Get object copy.
+
+        :return: copied object
+        """
         return type(self)(self.start, self.stop, self._current,
                           scale=self.scale, log=self.log,
                           forced_type=self.type)
 
     @property
     def current(self) -> Union[int, float]:
+        """
+        Get current value of parameter.
+
+        :return: current value
+        """
         if self.type == int:
             return rint(self._current)
         return self._current
 
     @property
     def c(self) -> Union[int, float]:
+        """
+        Get current value of parameter.
+
+        :return: current value
+        """
         return self.current
 
     def __repr__(self) -> str:
+        """
+        Get object representation.
+
+        :return: representation
+        """
         base = ('Parameter({}, {}, {}, scale={}'
                 .format(self.start, self.stop, round(self._current, 2),
                         round(self.scale, 2), self.log))
@@ -397,7 +569,8 @@ class Parameter(object):
         return base + ', forced_type={})'.format(self.type.__name__)
 
 
-class Encoder(object, metaclass=ABCMeta):
+class Encoder(Individual, metaclass=ABCMeta):
+    """Base encoder and decoder object."""
 
     symbol_width = Parameter(1, 3, 2)
     symbol_duration = Parameter(0.001, 0.1, 0.005)
@@ -422,6 +595,7 @@ class Encoder(object, metaclass=ABCMeta):
     sqe_end_v = Parameter(0, 1, 0.5)
 
     def __init__(self):
+        """Initialise object."""
         # Clone parameters
         for p, v in self.parameters.items():
             setattr(self, p, v.copy())
@@ -455,26 +629,49 @@ class Encoder(object, metaclass=ABCMeta):
         print('Peak vars:', self.peak_range, self.peak_threshold.c)
 
     def __repr__(self) -> str:
+        """
+        Get object representation.
+
+        :return: representation
+        """
         return '{}:\n    {}'.format(type(self).__name__, '\n    '.join(
             '{}: {}'.format(p, v.c) for p, v in self.parameters.items()))
 
     @property
     def parameters(self) -> Dict[str, Parameter]:
+        """
+        Get all parameters.
+
+        :return: parameters
+        """
         return {p: getattr(self, p) for p in dir(self)
                 if p != 'parameters' and
                 isinstance(getattr(self, p), Parameter)}
 
     @classmethod
     def random(cls) -> 'Encoder':
+        """
+        Randomise encoder and decoder.
+
+        :return: randomised encoder and decoder
+        """
         new = cls()
         for p, v in new.parameters.items():
             setattr(new, p, v.random())
         return new
 
     def reinit(self):
+        """Perform initialisation again."""
         self.__init__()
 
     def mutate(self, amount: float = 1/3, scale: float = 1) -> 'Encoder':
+        """
+        Get random mutated encoder and decoder.
+
+        :param amount: mutation amount
+        :param scale: mutation scale
+        :return: random mutated encoder and decoder
+        """
         new = type(self)()
         for p, v in self.parameters.items():
             if amount > np.random.random():
@@ -484,6 +681,13 @@ class Encoder(object, metaclass=ABCMeta):
         return new
 
     def cross(self, other: 'Encoder', amount: float = 1/3) -> 'Encoder':
+        """
+        Cross-mutate two encoder and decoder pairs.
+
+        :param other: encoder and decoder to mutate with
+        :param amount: crossing strength
+        :return: crossed encoder and decoder
+        """
         new = type(self)()
         for p, v in self.parameters.items():
             if amount > np.random.random():
@@ -496,6 +700,12 @@ class Encoder(object, metaclass=ABCMeta):
         return new
 
     def filter(self, stream: WavStream) -> WavStream:
+        """
+        Perform filtering on waveform.
+
+        :param stream: waveform to filter
+        :return: filtered waveform
+        """
         if self.filter_type.c == 0:
             return stream
         elif self.filter_type.c == 1:
@@ -509,15 +719,36 @@ class Encoder(object, metaclass=ABCMeta):
 
     @abstractmethod
     def encode(self, stream: BitStream) -> WavStream:
+        """
+        Encode binary data.
+
+        :param stream: binary data
+        :return: waveform
+        """
         pass
 
     @abstractmethod
     def decode(self, stream: WavStream, filter_stream: bool = True,
                retcert: bool = False) \
             -> Union[BitStream, Tuple[BitStream, List[float]]]:
+        """
+        Decode waveform.
+
+        :param stream: waveform
+        :param filter_stream: apply filter to waveform
+        :param retcert: return certainties
+        :return: binary data and optionally certainties
+        """
         pass
 
     def _base(self, stream: BitStream, frequency: bool = True) -> np.ndarray:
+        """
+        Provide base waveform to transform with sine function.
+
+        :param stream: binary data
+        :param frequency: base frequency
+        :return: base waveform
+        """
         if frequency:
             v_max = self.f * 2 * np.pi * len(stream) * self.symbol_len / self.r
         else:
@@ -527,6 +758,7 @@ class Encoder(object, metaclass=ABCMeta):
 
 
 class FeatureASK(Encoder):
+    """Peak-based ASK encoder and decoder."""
 
     high_amplitude = Parameter(0.0, 1.0, 0.9)
     low_amplitude = Parameter(0.0, 0.9, 0.1)
@@ -535,6 +767,7 @@ class FeatureASK(Encoder):
     d_low_amplitude = Parameter(0.0, 0.9, 0.1)
 
     def __init__(self):
+        """Initialise object."""
         super().__init__()
         self.low_amp = self.low_amplitude.c * self.high_amplitude.c
         self.step_amp = ((self.high_amplitude.c * (1 - self.low_amplitude.c)) /
@@ -545,6 +778,12 @@ class FeatureASK(Encoder):
                            (self.symbol_size - 1))
 
     def encode(self, stream: BitStream) -> WavStream:
+        """
+        Encode binary data.
+
+        :param stream: binary data
+        :return: waveform
+        """
         stream = stream.assymbolwidth(self.symbol_width.c)
 
         base = self._base(stream)
@@ -557,6 +796,14 @@ class FeatureASK(Encoder):
     def decode(self, stream: WavStream, filter_stream: bool = True,
                retcert: bool = False) \
             -> Union[BitStream, Tuple[BitStream, List[float]]]:
+        """
+        Decode waveform.
+
+        :param stream: waveform
+        :param filter_stream: apply filter to waveform
+        :param retcert: return certainties
+        :return: binary data and optionally certainties
+        """
         symbol_len = rint(stream.rate * self.symbol_duration.c)
         levels, _ = np.linspace(self.d_low_amp, self.d_high_amplitude.c,
                                 self.symbol_size, retstep=True)
@@ -589,9 +836,19 @@ class FeatureASK(Encoder):
 
 
 class FeatureIntegralASK(FeatureASK):
+    """Sum-based ASK encoder and decoder."""
+
     def decode(self, stream: WavStream, filter_stream: bool = True,
                retcert: bool = False) \
             -> Union[BitStream, Tuple[BitStream, List[float]]]:
+        """
+        Decode waveform.
+
+        :param stream: waveform
+        :param filter_stream: apply filter to waveform
+        :param retcert: return certainties
+        :return: binary data and optionally certainties
+        """
         symbol_len = rint(stream.rate * self.symbol_duration.c)
         sums = self._sine_sums()
         print('Sums:', sums)
@@ -620,7 +877,13 @@ class FeatureIntegralASK(FeatureASK):
             return retval, certainties
         return retval
 
-    def _sine_sums(self, sample_n: int = 100):
+    def _sine_sums(self, sample_n: int = 100) -> np.ndarray:
+        """
+        Calculate symbol sums for comparison.
+
+        :param sample_n: number of symbols to average over
+        :return: sums for comparison
+        """
         retval = []
         symbol_max = self.f * 2 * np.pi * self.symbol_len / self.r
         base_symbol = np.linspace(0, symbol_max * sample_n,
@@ -632,8 +895,15 @@ class FeatureIntegralASK(FeatureASK):
 
 
 class FeaturePSK(Encoder):
+    """Peak-based PSK encoder and decoder."""
 
     def encode(self, stream: BitStream) -> WavStream:
+        """
+        Encode binary data.
+
+        :param stream: binary data
+        :return: waveform
+        """
         stream = stream.assymbolwidth(self.symbol_width.c)
 
         base = self._base(stream)
@@ -646,6 +916,14 @@ class FeaturePSK(Encoder):
     def decode(self, stream: WavStream, filter_stream: bool = True,
                retcert: bool = False) \
             -> Union[BitStream, Tuple[BitStream, List[float]]]:
+        """
+        Decode waveform.
+
+        :param stream: waveform
+        :param filter_stream: apply filter to waveform
+        :param retcert: return certainties
+        :return: binary data and optionally certainties
+        """
         λ = stream.rate / self.f
         symbol_len = rint(stream.rate * self.symbol_duration.c)
 
@@ -682,7 +960,11 @@ class FeaturePSK(Encoder):
             negatives = peaks[:, 0][peaks[:, 1] < 0] - shift
 
             values = sq_cyclic_align_error(positives, negatives, λ,
-                                           self.symbol_size)
+                                           self.symbol_size,
+                                           start=self.sqe_start.c,
+                                           start_v=self.sqe_start_v.c,
+                                           end=self.sqe_end.c,
+                                           end_v=self.sqe_end_v.c)
             value = values.argmin()
 
             retval.append(value)
@@ -696,18 +978,26 @@ class FeaturePSK(Encoder):
 
 
 class FeatureFSK(Encoder):
+    """FFT-based FSK encoder and decoder."""
 
     frequency_dev = Parameter(0.01, 1.0, 0.25)
 
     peak_threshold = Parameter(0.0, 1.0, 0.15)
 
     def __init__(self):
+        """Initialise object."""
         super().__init__()
         self.f_low = self.f * (1 - self.frequency_dev.c)
         self.f_high = self.f * (1 + self.frequency_dev.c)
         self.f_step = (self.f_high - self.f_low) / (self.symbol_size - 1)
 
     def encode(self, stream: BitStream) -> WavStream:
+        """
+        Encode binary data.
+
+        :param stream: binary data
+        :return: waveform
+        """
         stream = stream.assymbolwidth(self.symbol_width.c)
         f_map = (stream * self.f_step) + self.f_low
         print('Frequency map:', f_map.round(2))
@@ -730,6 +1020,14 @@ class FeatureFSK(Encoder):
     def decode(self, stream: WavStream, filter_stream: bool = True,
                retcert: bool = False) \
             -> Union[BitStream, Tuple[BitStream, List[float]]]:
+        """
+        Decode waveform.
+
+        :param stream: waveform
+        :param filter_stream: apply filter to waveform
+        :param retcert: return certainties
+        :return: binary data and optionally certainties
+        """
         symbol_len = rint(stream.rate * self.symbol_duration.c)
         levels, _ = np.linspace(self.f_low, self.f_high, self.symbol_size,
                                 retstep=True)
@@ -762,14 +1060,23 @@ class FeatureFSK(Encoder):
 
 
 class FeatureFSK2(FeatureFSK):
+    """Peak-based FSK encoder and decoder."""
 
     def decode(self, stream: WavStream, filter_stream: bool = True,
                retcert: bool = False) \
             -> Union[BitStream, Tuple[BitStream, List[float]]]:
+        """
+        Decode waveform.
+
+        :param stream: waveform
+        :param filter_stream: apply filter to waveform
+        :param retcert: return certainties
+        :return: binary data and optionally certainties
+        """
         symbol_len = rint(stream.rate * self.symbol_duration.c)
         levels, _ = np.linspace(self.f_low, self.f_high, self.symbol_size,
                                 retstep=True)
-        peak_dist_ref = np.divide(self.r, levels) / 2
+        peak_dist_ref = np.array(self.r) / levels / 2
 
         if filter_stream:
             stream = self.filter(WavStream(stream, stream.rate, symbol_len))
@@ -811,6 +1118,7 @@ class FeatureFSK2(FeatureFSK):
 
 
 class FeatureQAM(Encoder):
+    """Peak-based QAM encoder and decoder."""
 
     symbol_shifts = Parameter(4)
     symbol_levels = Parameter(2)
@@ -826,6 +1134,7 @@ class FeatureQAM(Encoder):
     d_comparison_type = Parameter(0, 1, 0)
 
     def __init__(self):
+        """Initialise object."""
         super().__init__()
         # Symbol param check
         width = np.log2(self.symbol_shifts.c * self.symbol_levels.c)
@@ -870,6 +1179,12 @@ class FeatureQAM(Encoder):
         print('Cartesian:\n{}'.format(self.cartesian.round(2)))
 
     def encode(self, stream: BitStream) -> WavStream:
+        """
+        Encode binary data.
+
+        :param stream: binary data
+        :return: waveform
+        """
         stream = stream.assymbolwidth(self.symbol_width.c)
 
         base = self._base(stream)
@@ -884,6 +1199,14 @@ class FeatureQAM(Encoder):
     def decode(self, stream: WavStream, filter_stream: bool = True,
                retcert: bool = False) \
             -> Union[BitStream, Tuple[BitStream, List[float]]]:
+        """
+        Decode waveform.
+
+        :param stream: waveform
+        :param filter_stream: apply filter to waveform
+        :param retcert: return certainties
+        :return: binary data and optionally certainties
+        """
         λ = stream.rate / self.f
         symbol_len = rint(stream.rate * self.symbol_duration.c)
 
@@ -921,7 +1244,11 @@ class FeatureQAM(Encoder):
             negatives = peaks[:, 0][peaks[:, 1] < 0] - shift
 
             n_shifts = self.symbol_shifts.c * 2 * self.d_symbol_shifts_scale.c
-            shifts = sq_cyclic_align_error(positives, negatives, λ, n_shifts)
+            shifts = sq_cyclic_align_error(positives, negatives, λ, n_shifts,
+                                           start=self.sqe_start.c,
+                                           start_v=self.sqe_start_v.c,
+                                           end=self.sqe_end.c,
+                                           end_v=self.sqe_end_v.c)
             shift = (shifts.argmin() * self.shift_step /
                      self.d_symbol_shifts_scale.c)
 
@@ -956,8 +1283,15 @@ class FeatureQAM(Encoder):
 
 
 class RMSEncoder(Encoder, metaclass=ABCMeta):
+    """RMSE encoder and decoder."""
 
-    def _samples(self, stream_len: int):
+    def _samples(self, stream_len: int) -> np.ndarray:
+        """
+        Create samples to compare to.
+
+        :param stream_len: binary data length
+        :return: comparison samples
+        """
         retval = []
         for v in range(self.symbol_size):
             stream = BitStream([v] * stream_len,
@@ -966,11 +1300,25 @@ class RMSEncoder(Encoder, metaclass=ABCMeta):
         return np.swapaxes(np.array(retval), 0, 1)
 
     def _encode(self, stream: BitStream) -> WavStream:
+        """
+        Encode binary data for comparison.
+
+        :param stream: binary data
+        :return: comparison waveform
+        """
         return self.encode(stream)
 
     def decode(self, stream: WavStream, filter_stream: bool = True,
                retcert: bool = False) \
             -> Union[BitStream, Tuple[BitStream, List[float]]]:
+        """
+        Decode waveform.
+
+        :param stream: waveform
+        :param filter_stream: apply filter to waveform
+        :param retcert: return certainties
+        :return: binary data and optionally certainties
+        """
         symbol_len = rint(stream.rate * self.symbol_duration.c)
 
         if filter_stream:
@@ -999,8 +1347,15 @@ class RMSEncoder(Encoder, metaclass=ABCMeta):
 
 
 class RMSASK(RMSEncoder, FeatureASK):
+    """RMSE ASK encoder and decoder."""
 
     def _encode(self, stream: BitStream) -> WavStream:
+        """
+        Encode binary data for comparison.
+
+        :param stream: binary data
+        :return: comparison waveform
+        """
         stream = stream.assymbolwidth(self.symbol_width.c)
 
         base = self._base(stream)
@@ -1012,13 +1367,21 @@ class RMSASK(RMSEncoder, FeatureASK):
 
 
 class RMSPSK(RMSEncoder, FeaturePSK):
+    """RMSE PSK encoder and decoder."""
 
     pass
 
 
 class RMSQAM(RMSEncoder, FeatureQAM):
+    """RMSE QAM encoder and decoder."""
 
     def _encode(self, stream: BitStream) -> WavStream:
+        """
+        Encode binary data for comparison.
+
+        :param stream: binary data
+        :return: comparison waveform
+        """
         stream = stream.assymbolwidth(self.symbol_width.c)
 
         base = self._base(stream)
