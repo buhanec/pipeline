@@ -81,11 +81,11 @@ class Population(object):
 
             # Select lucky parents
             lucky = [i for i in sorted_[self.retain_num:]
-                     if self.random_select > np.random.rand()]
+                     if self.random_select > np.random.random()]
 
             # Mutate parents
             parents = [i.mutate(self.mutate_amount, self.mutate_scale)
-                       if self.mutate_chance > np.random.rand()
+                       if self.mutate_chance > np.random.random()
                        else i for i in best + lucky]
 
             # Populate children
@@ -102,7 +102,13 @@ class Population(object):
             self.gen += 1
             self.pop.append(parents + children)
             self.grades.append(self._grade())
-            print('Gen {} grade: {}'.format(self.gen, sum(self.current_grade) / len(self.current_grade)))
+            top = sorted(self.current_grade, reversed=True)
+            top25 = top[:len(self.current_grade) // 4]
+            overall_grade = round(sum(top) / len(top))
+            top25_grade = round(sum(top25) / len(top25))
+            top_grade = round(top[0])
+            print('Gen {} grades: {}/{}/{}'.format(self.gen, top_grade,
+                                                   top25_grade, overall_grade))
 
             # End timer
             run_end = datetime.datetime.utcnow()
@@ -110,7 +116,7 @@ class Population(object):
             run_average = sum(runs[-5:], datetime.timedelta()) / len(runs[-5:])
             print('Gen average time:', run_average)
             if deadline - run_end < run_average:
-                print('Timing out')
+                print('Timing out after:', run_end - start)
                 break
         print('Average run:', sum(runs, datetime.timedelta()) / len(runs))
         print('Done in:', run_end - start)
@@ -123,7 +129,8 @@ class Series(Individual):
 
     def mutate(self, amount: float, scale: float) -> 'Series':
         s = Series()
-        s.numbers = [n + int(scale * np.random.randint(-5, 6)) if amount > np.random.rand()
+        s.numbers = [n + int(scale * np.random.randint(-5, 6))
+                     if amount > np.random.random()
                      else n for n in self.numbers]
         return s
 
@@ -132,7 +139,7 @@ class Series(Individual):
         s.numbers = []
         for i, v in enumerate(self.numbers):
             o = other.numbers[i]
-            if amount > np.random.rand():
+            if amount > np.random.random():
                 n = (v + o) // 2
             elif np.random.randint(2):
                 n = v
