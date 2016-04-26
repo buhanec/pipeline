@@ -810,16 +810,64 @@ class FeatureFSK2(FeatureFSK):
         return retval
 
 
-class SimpleQAM(Encoder):
+class FeatureQAM(Encoder):
 
-    symbol_width = Parameter(4)
+    symbol_shifts = Parameter(4)
+    symbol_levels = Parameter(2)
+    symbol_width = Parameter(3)
+
+    high_amplitude = Parameter(0.0, 1.0, 0.9)
+    low_amplitude = Parameter(0.0, 0.9, 0.5)
+
+    d_high_amplitude = Parameter(0.0, 1.0, 0.8)
+    d_low_amplitude = Parameter(0.0, 0.9, 0.5)
+
+    d_symbol_shifts_scale = Parameter(4)
+    d_comparison_type = Parameter(0, 1, 0)
 
     def __init__(self):
         super().__init__()
-        # TODO: generate constellation based on symbol width
-        self.cartesian = np.array([[x, y] for x in np.linspace(-1, 1, 4)
-                                   for y in np.linspace(-1, 1, 4)])
-        self.polar = c2p(self.cartesian)
+        # Symbol param check
+        width = np.log2(self.symbol_shifts.c * self.symbol_levels.c)
+        if width != self.symbol_width.c:
+            raise ValueError('incorrect parameter settings')
+
+        # ASK Setup
+        self.low_amp = self.low_amplitude.c * self.high_amplitude.c
+        self.step_amp = ((self.high_amplitude.c * (1 - self.low_amplitude.c)) /
+                         (self.symbol_size - 1))
+        self.d_low_amp = self.d_low_amplitude.c * self.d_high_amplitude.c
+        self.d_step_amp = ((self.d_high_amplitude.c *
+                            (1 - self.d_low_amplitude.c)) /
+                           (self.symbol_size - 1))
+
+        shifts, step = np.linspace(0, 2 * np.pi, self.symbol_shifts.c,
+                                   endpoint=False, retstep=True)
+        self.shift_step = step / 2
+        shifts_alt = shifts + self.shift_step
+
+        levels = np.linspace(self.low_amp, self.high_amplitude.c,
+                             self.symbol_levels.c)
+        levels_ = np.linspace(self.d_low_amp, self.d_high_amplitude.c,
+                              self.symbol_levels.c)
+
+        patterns = [[l, theta] for theta in shifts for l in levels[::2]]
+        patterns += [[l, theta] for theta in shifts_alt for l in levels[1::2]]
+
+        patterns_ = [[l, theta] for theta in shifts for l in levels_[::2]]
+        patterns_ += [[l, theta] for theta in shifts_alt
+                      for l in levels_[1::2]]
+        patterns_ += patterns_[:self.symbol_levels.c // 2]
+
+        self.polar = np.array(patterns)
+        self.polar_ = np.array(patterns_)
+        self.polar_[-(self.symbol_levels.c // 2):, 1] = 2 * np.pi
+
+        self.cartesian = p2c(self.polar)
+        self.cartesian_ = p2c(self.polar_[:self.symbol_size])
+
+        print('Polar:\n{}'.format(self.polar.round(2)))
+        print('Cartesian:\n{}'.format(self.cartesian.round(2)))
 
     def encode(self, stream: BitStream) -> WavStream:
         stream = stream.assymbolwidth(self.symbol_width.c)
@@ -835,7 +883,7 @@ class SimpleQAM(Encoder):
 
     def decode(self, stream: WavStream, filter_stream: bool = True,
                retcert: bool = False) \
-            -> Union[BitStream, Tuple[BitStream, List]]:
+            -> Union[BitStream, Tuple[BitStream, List[float]]]:
         λ = stream.rate / self.f
         symbol_len = rint(stream.rate * self.symbol_duration.c)
 
@@ -844,26 +892,62 @@ class SimpleQAM(Encoder):
 
         retval = []
         certainties = []
-        for s in stream.symbols():
-            peaks = np.array(s.peaks(self.peak_range, self.peak_threshold.c))
-            # TODO: squared distance from levels
-            amp = np.abs(peaks)[:, 1].mean()
-            positives = peaks[:, 0][peaks[:, 1] > 0]
-            negatives = peaks[:, 0][peaks[:, 1] < 0]
-            negatives2 = np.array(negatives) % λ / λ + 0.25
-            positives2 = np.array(positives) % λ / λ + 0.75
-            peaks_stream = np.concatenate((negatives2, positives2))
-            bad_mean = (peaks_stream % 1 * 2 * np.pi).mean()
+        for k, symbol in enumerate(stream.symbols()):
+            shift = λ - (k * symbol_len) % λ
+            peaks = np.array(symbol.peaks(self.peak_range,
+                                          self.peak_threshold.c))
 
-            polar = np.array([[amp, bad_mean]])
+            if len(peaks) == 0:
+                retval.append(0)
+                certainties.append(infs(self.symbol_size))
+                print('> no peaks')
+                continue
+
+            amp = trim_mean(np.abs(peaks[:, 1]))
+
+            # Drop first or last space peaks
+            if peaks[0, 1] == 0:
+                del peaks[0, 1]
+            if peaks[-1, 1] == symbol_len - 1:
+                del peaks[-1]
+
+            if len(peaks) == 0:
+                retval.append(0)
+                certainties.append(infs(self.symbol_size))
+                print('> no peaks')
+                continue
+
+            positives = peaks[:, 0][peaks[:, 1] > 0] - shift
+            negatives = peaks[:, 0][peaks[:, 1] < 0] - shift
+
+            n_shifts = self.symbol_shifts.c * 2 * self.d_symbol_shifts_scale.c
+            shifts = sq_cyclic_align_error(positives, negatives, λ, n_shifts)
+            shift = (shifts.argmin() * self.shift_step /
+                     self.d_symbol_shifts_scale.c)
+
+            print(amp, shift / (2 * np.pi))
+
+            polar = np.array([amp, shift])
             cartesian = p2c(polar)
 
-            temp = np.square(self.cartesian - cartesian)
-            temp2 = temp[:, 0] + temp[:, 1]
-            value = temp2.argmin()
+            if self.d_comparison_type.c == 0:
+                temp = np.square(self.cartesian_ - cartesian)
+                values = temp[:, 0] + temp[:, 1]
+                value = values.argmin()
+            else:
+                weights = np.array([self.d_step_amp, self.shift_step])
+                temp = np.square((self.polar_ - polar) / weights)
+                values = temp[:, 0] + temp[:, 1]
+                even_shells = self.symbol_levels.c // 2
+                lim_cases = np.min([values[:even_shells],
+                                    values[-even_shells:]], axis=0)
+                other_cases = values[even_shells:-even_shells]
+                values = np.concatenate((lim_cases, other_cases))
+                value = values.argmin()
             retval.append(value)
-            certainties.append(temp2)
-            print('>', value, cartesian.round(2), polar.round(2))
+            certainties.append(values)
+            print('>', k, value, polar)
+            print('Peaks:', peaks[:, 0])
 
         retval = BitStream(retval, symbolwidth=self.symbol_width.c)
         if retcert:
