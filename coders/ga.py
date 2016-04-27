@@ -102,7 +102,7 @@ class Population(object):
             self.gen += 1
             self.pop.append(parents + children)
             self.grades.append(self._grade())
-            top = sorted(self.current_grade, reversed=True)
+            top = sorted(self.current_grade, reverse=True)
             top25 = top[:len(self.current_grade) // 4]
             overall_grade = round(sum(top) / len(top))
             top25_grade = round(sum(top25) / len(top25))
