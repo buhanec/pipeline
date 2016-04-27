@@ -1265,6 +1265,15 @@ class FeatureQAM(Encoder):
         return retval
 
 
+class Feature16QAM(FeatureQAM):
+
+    symbol_shifts = Parameter(4)
+    symbol_levels = Parameter(4)
+    symbol_width = Parameter(4)
+
+    symbol_duration = Parameter(0.0001, 0.003, 0.0015)
+
+
 class RMSEncoder(Encoder, metaclass=ABCMeta):
     """RMSE encoder and decoder."""
 
