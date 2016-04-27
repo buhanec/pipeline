@@ -23,13 +23,12 @@ class Individual(metaclass=ABCMeta):
 class Population(object):
 
     def __init__(self, cls: Individual, fn, population_size: int=20,
-                 fitness_target: float=0, retain_amount: float=0.2,
+                 retain_amount: float=0.2,
                  random_select: float=0.1, mutate_chance: float=0.2,
                  mutate_amount: float=0.3, mutate_scale: float=1,
                  cross_amount: float=0.3):
         self.fn = fn
         self.size = population_size
-        self.fitness_target = fitness_target
         self.retain_amount = retain_amount
         self.retain_num = rint(self.size * self.retain_amount)
         self.random_select = random_select
@@ -52,10 +51,11 @@ class Population(object):
     def current_grade(self) -> List[float]:
         return self.grades[self.gen]
 
-    def _grade(self, generation: int=-1) -> List[float]:
+    def _grade(self, generation: int = -1) -> List[float]:
         return [self.fn(i) for i in self.pop[generation]]
 
-    def _sort(self, target: float=0, generation: int=-1) -> List[Individual]:
+    def _sort(self, target: float = 0, generation: int = -1) \
+            -> List[Individual]:
         return [i for g, i in sorted(zip(self.grades[generation],
                                          self.pop[generation]),
                                      key=lambda t: abs(target - t[0]))]
@@ -63,7 +63,7 @@ class Population(object):
     def set_fitness_fn(self, fn):
         self.fn = fn
 
-    def evolve(self, target: float=0, max_iter: int=20,
+    def evolve(self, target: float = 0, max_iter: int = 20,
                max_time: int=600):
         start = datetime.datetime.utcnow()
         run_end = start
