@@ -273,7 +273,10 @@ class WavStream(np.ndarray):
         for n in scipy_peaks:
             if relocate_peak:
                 min_n = max(n - pw_pad, 0)
-                m = int(min_n + (stream[min_n:n + pw_pad]).argmax())
+                if stream[n] > 0:
+                    m = int(min_n + (stream[min_n:n + pw_pad]).argmax())
+                else:
+                    m = int(min_n + (stream[min_n:n + pw_pad]).argmin())
             else:
                 m = n
             if stream[m] > threshold:
