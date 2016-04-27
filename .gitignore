@@ -7,6 +7,7 @@
 *.svg
 old_notebooks/*
 temp/*
+lock_*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
